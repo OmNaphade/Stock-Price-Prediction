@@ -2,179 +2,215 @@ import plotly.graph_objects as go
 import streamlit as st
 import sqlite3
 from helper import *
-import hashlib
+import bcrypt
 
-# Database setup
-conn = sqlite3.connect('users.db')
+# ── Database setup ────────────────────────────────────────────────────────────
+conn = sqlite3.connect('users.db', check_same_thread=False)
 c = conn.cursor()
 c.execute('''
     CREATE TABLE IF NOT EXISTS users (
-        username TEXT PRIMARY KEY,
-        password TEXT
+        username      TEXT PRIMARY KEY,
+        password_hash TEXT
     )
 ''')
 conn.commit()
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
 
-def authenticate(username, password):
-    hashed_password = hash_password(password)
-    c.execute('SELECT * FROM users WHERE username=? AND password=?', (username, hashed_password))
-    return c.fetchone() is not None
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-def register_user(username, password):
-    hashed_password = hash_password(password)
+
+def check_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+
+def authenticate(username: str, password: str) -> bool:
+    c.execute('SELECT password_hash FROM users WHERE username=?', (username,))
+    row = c.fetchone()
+    return check_password(password, row[0]) if row else False
+
+
+def register_user(username: str, password: str) -> bool:
     try:
-        c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, hashed_password))
+        c.execute(
+            'INSERT INTO users (username, password_hash) VALUES (?, ?)',
+            (username, hash_password(password))
+        )
         conn.commit()
         return True
     except sqlite3.IntegrityError:
         return False
 
-def reset_password(username, new_password):
-    hashed_password = hash_password(new_password)
-    c.execute('UPDATE users SET password=? WHERE username=?', (hashed_password, username))
+
+def reset_password(username: str, new_password: str) -> bool:
+    c.execute(
+        'UPDATE users SET password_hash=? WHERE username=?',
+        (hash_password(new_password), username)
+    )
     conn.commit()
     return c.rowcount > 0
 
+
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Stock Price Prediction",
     page_icon="📈",
 )
 
+# ── Session state ─────────────────────────────────────────────────────────────
 if "is_authenticated" not in st.session_state:
     st.session_state.is_authenticated = False
+    st.session_state.username = ""
 
-# Authentication
-username = st.text_input("Username:", key="auth_username_input")
-password = st.text_input("Password:", type="password", key="auth_password_input")
-login_button = st.button("Login", key="auth_login_button")
+# ─────────────────────────────────────────────────────────────────────────────
+# AUTH PAGE
+# ─────────────────────────────────────────────────────────────────────────────
+if not st.session_state.is_authenticated:
+    st.title("Login to Stock Prediction App")
 
-if login_button:
-    if authenticate(username, password):
-        st.session_state.is_authenticated = True
-    else:
-        st.error("Invalid credentials. Please try again.")
+    username = st.text_input("Username:")
+    password = st.text_input("Password:", type="password")
+    col1, col2 = st.columns(2)
 
-if st.session_state.is_authenticated:
-    st.sidebar.markdown("## **Welcome, Back User**")
+    with col1:
+        if st.button("Login", use_container_width=True):
+            if authenticate(username, password):
+                st.session_state.is_authenticated = True
+                st.session_state.username = username
+                st.success("Logged in successfully!")
+                st.rerun()
+            else:
+                st.error("Invalid credentials.")
 
-    stock_dict = fetch_stocks()
-    st.sidebar.markdown("### **Select stock**")
-    stock = st.sidebar.selectbox("Choose a stock", list(stock_dict.keys()), key="sidebar_stock_select")
+    with col2:
+        if st.button("Register New User", use_container_width=True):
+            if username and password:
+                if register_user(username, password):
+                    st.success("Registration successful. Please log in.")
+                else:
+                    st.error("Username already exists.")
+            else:
+                st.error("Please enter username and password.")
 
-    st.sidebar.markdown("### **Select stock exchange**")
-    stock_exchange = st.sidebar.radio("Choose a stock exchange", ("BSE", "NSE"), index=0, key="sidebar_stock_exchange_select")
+    with st.expander("Forgot Password?"):
+        reset_username     = st.text_input("Username:", key="reset_user")
+        reset_new_password = st.text_input("New Password:", type="password", key="reset_pw")
+        if st.button("Reset Password"):
+            if reset_password(reset_username, reset_new_password):
+                st.success("Password reset successful.")
+            else:
+                st.error("Username not found.")
 
-    stock_ticker = f"{stock_dict[stock]}.{'BO' if stock_exchange == 'BSE' else 'NS'}"
+    st.stop()
 
-    st.sidebar.markdown("### **Stock ticker**")
-    st.sidebar.text_input(
-        label="Stock ticker code", placeholder=stock_ticker, disabled=True, key="sidebar_stock_ticker_input"
-    )
 
-    periods = fetch_periods_intervals()
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN APP
+# ─────────────────────────────────────────────────────────────────────────────
+st.sidebar.title(f"Welcome, {st.session_state.username}")
+if st.sidebar.button("Logout"):
+    st.session_state.is_authenticated = False
+    st.session_state.username = ""
+    st.rerun()
 
-    st.sidebar.markdown("### **Select period**")
-    period = st.sidebar.selectbox("Choose a period", list(periods.keys()), key="sidebar_period_select")
+# ── Stock selector ────────────────────────────────────────────────────────────
+stock_dict = fetch_stocks()
 
-    st.sidebar.markdown("### **Select interval**")
-    interval = st.sidebar.selectbox("Choose an interval", periods[period], key="sidebar_interval_select")
+st.sidebar.markdown("### **Select stock**")
+stock = st.sidebar.selectbox("Choose a stock", list(stock_dict.keys()))
 
-    st.markdown("# **Stock Price Prediction**")
+st.sidebar.markdown("### **Select stock exchange**")
+stock_exchange = st.sidebar.radio("Choose a stock exchange", ("BSE", "NSE"), index=0)
 
+# stock_dict value is the Yahoo Finance ticker symbol (e.g. "BAJFINANCE")
+ticker_symbol = stock_dict[stock]
+suffix        = "BO" if stock_exchange == "BSE" else "NS"
+stock_ticker  = f"{ticker_symbol}.{suffix}"
+
+st.sidebar.markdown("### **Stock ticker**")
+st.sidebar.text_input(
+    label="Stock ticker code",
+    value=stock_ticker,
+    disabled=True,
+)
+
+periods  = fetch_periods_intervals()
+
+st.sidebar.markdown("### **Select period**")
+period   = st.sidebar.selectbox("Choose a period", list(periods.keys()))
+
+st.sidebar.markdown("### **Select interval**")
+interval = st.sidebar.selectbox("Choose an interval", periods[period])
+
+# ── Page title ────────────────────────────────────────────────────────────────
+st.markdown("# 📈 Stock Price Prediction")
+
+# ── Historical candlestick chart ──────────────────────────────────────────────
+try:
     stock_data = fetch_stock_history(stock_ticker, period, interval)
 
-    st.markdown("## **Historical Data**")
-
-    fig = go.Figure(
-        data=[
-            go.Candlestick(
-                x=stock_data.index,
-                open=stock_data["Open"],
-                high=stock_data["High"],
-                low=stock_data["Low"],
-                close=stock_data["Close"],
-            )
-        ]
-    )
-
-    fig.update_layout(xaxis_rangeslider_visible=False)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    train_df, test_df, forecast, predictions = generate_stock_prediction(stock_ticker)
-
-    if (
-        train_df is not None
-        and (forecast >= 0).all()
-        and (predictions >= 0).all()
-    ):
-        st.markdown("## **Stock Prediction**")
-
-        fig = go.Figure(
-            data=[
-                go.Scatter(
-                    x=train_df.index,
-                    y=train_df["Close"],
-                    name="Train",
-                    mode="lines",
-                    line=dict(color="blue"),
-                ),
-                go.Scatter(
-                    x=test_df.index,
-                    y=test_df["Close"],
-                    name="Test",
-                    mode="lines",
-                    line=dict(color="orange"),
-                ),
-                go.Scatter(
-                    x=forecast.index,
-                    y=forecast,
-                    name="Forecast",
-                    mode="lines",
-                    line=dict(color="red"),
-                ),
-                go.Scatter(
-                    x=test_df.index,
-                    y=predictions,
-                    name="Test Predictions",
-                    mode="lines",
-                    line=dict(color="green"),
-                ),
-            ]
+    if stock_data is None or stock_data.empty:
+        st.warning(
+            f"⚠️ No historical data for **{stock_ticker}**. "
+            "Try a different exchange (BSE ↔ NSE) or period."
         )
-
+    else:
+        st.markdown("## 📊 Historical Data")
+        fig = go.Figure(data=[go.Candlestick(
+            x=stock_data.index,
+            open=stock_data["Open"],
+            high=stock_data["High"],
+            low=stock_data["Low"],
+            close=stock_data["Close"],
+        )])
         fig.update_layout(xaxis_rangeslider_visible=False)
-
         st.plotly_chart(fig, use_container_width=True)
 
-    else:
-        st.markdown("## **Stock Prediction**")
-        st.markdown("### **No data available for the selected stock**")
+except Exception as e:
+    st.error(f"❌ Error loading historical data: {e}")
+
+# ── Prediction section ────────────────────────────────────────────────────────
+st.markdown("## 🔮 Stock Prediction")
+st.caption("AutoReg model trained on 2 years of daily close prices (90 % train / 10 % test).")
+
+with st.spinner("Training AutoReg model…"):
+    try:
+        train_df, test_df, forecast, predictions = generate_stock_prediction(stock_ticker)
+    except Exception as e:
+        train_df = None
+        st.error(f"❌ Prediction error: {e}")
+
+# ── FIX: removed the wrong `(forecast >= 0).all()` gate ──────────────────────
+# AutoReg can produce any real-valued output; gating on positivity wrongly
+# suppressed valid predictions.  We now only check that data was returned.
+if train_df is not None and forecast is not None and predictions is not None:
+    fig2 = go.Figure(data=[
+        go.Scatter(
+            x=train_df.index, y=train_df["Close"],
+            name="Train", mode="lines", line=dict(color="blue"),
+        ),
+        go.Scatter(
+            x=test_df.index, y=test_df["Close"],
+            name="Test", mode="lines", line=dict(color="orange"),
+        ),
+        go.Scatter(
+            x=predictions.index, y=predictions,
+            name="Test Predictions", mode="lines", line=dict(color="green"),
+        ),
+        go.Scatter(
+            x=forecast.index, y=forecast,
+            name="90-day Forecast", mode="lines",
+            line=dict(color="red", dash="dot"),
+        ),
+    ])
+    fig2.update_layout(
+        xaxis_rangeslider_visible=False,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 else:
-    st.warning("Please log in to access the application.")
-    st.warning("Demo username = 'user1', Demo password = '1234'")
-
-    with st.expander("Register"):
-        new_username = st.text_input("New Username:", key="register_new_username_input")
-        new_password = st.text_input("New Password:", type="password", key="register_new_password_input")
-        register_button = st.button("Register", key="register_button")
-
-        if register_button:
-            if register_user(new_username, new_password):
-                st.success("Registration successful. Please log in.")
-            else:
-                st.error("Username already exists. Please choose a different username.")
-
-    with st.expander("Reset Password"):
-        reset_username = st.text_input("Username for password reset:", key="reset_username_input")
-        reset_new_password = st.text_input("New Password:", type="password", key="reset_new_password_input")
-        reset_password_button = st.button("Reset Password", key="reset_password_button")
-
-        if reset_password_button:
-            if reset_password(reset_username, reset_new_password):
-                st.success("Password reset successful. Please log in with your new password.")
-            else:
-                st.error("Username not found. Please check the username.")
+    st.warning(
+        f"⚠️ Could not generate a prediction for **{stock_ticker}**.\n\n"
+        "This usually means Yahoo Finance returned insufficient history for this symbol. "
+        "Try switching the exchange (BSE ↔ NSE) or selecting a different stock."
+    )
