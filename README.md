@@ -158,6 +158,6 @@ docker run --rm -p 8501:8501 stock-prediction-app
 
 ---
 
-## Author
+## Ownership
 
-**Om Naphade** · [LinkedIn](https://linkedin.com/in/omnaphade) · [Portfolio](https://om-naphade.netlify.app) · [GitHub](https://github.com/OmNaphade)
+This project is maintained by its contributors.
