@@ -58,3 +58,33 @@ def test_empty_input_returns_empty_output():
     pipeline = FeaturePipeline()
     result = pipeline.build(pd.DataFrame())
     assert result.empty
+
+
+def test_live_features_use_the_most_recent_row_that_build_drops(synthetic_ohlcv):
+    """build() drops the most recent trading day (its target is unknown —
+    nothing to shift(-1) in yet). build_live_features() must return
+    exactly that row, not require a target for it."""
+    pipeline = FeaturePipeline()
+    trained_features = pipeline.build(synthetic_ohlcv)
+    live = pipeline.build_live_features(synthetic_ohlcv)
+
+    assert live is not None
+    assert live.index[0] == synthetic_ohlcv.index[-1]
+    assert live.index[0] > trained_features.index[-1]
+    assert live["close"].iloc[0] == synthetic_ohlcv["Close"].iloc[-1]
+    for col in pipeline.feature_columns:
+        assert col in live.columns
+    assert not live[pipeline.feature_columns].isna().any(axis=None)
+
+
+def test_live_features_none_when_history_too_short_for_warmup(make_ohlcv):
+    tiny = make_ohlcv(n=5, seed=1)
+    pipeline = FeaturePipeline()
+    assert pipeline.build_live_features(tiny) is None
+
+
+def test_live_features_none_on_empty_input():
+    import pandas as pd
+
+    pipeline = FeaturePipeline()
+    assert pipeline.build_live_features(pd.DataFrame()) is None

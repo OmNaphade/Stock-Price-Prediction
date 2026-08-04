@@ -56,6 +56,7 @@ class PredictionReport:
     predicted_log_return: float
     predicted_next_close: float
     last_close: float
+    target_date: pd.Timestamp
     live_quote: Optional[float]
     interval_low: Optional[float]
     interval_high: Optional[float]
@@ -143,12 +144,26 @@ class PredictionService:
         y_all = features_df[TARGET_COLUMN].to_numpy(dtype=np.float64)
         final_model.fit(X_all, y_all)
 
-        last_row = features_df.iloc[[-1]]
+        # `features_df`'s own last row necessarily has no target yet (it's
+        # tomorrow's, unknown) and gets dropped by build() — using it here
+        # would predict a date whose close is already sitting in `ohlcv`.
+        # build_live_features() is the one row build() can't produce: the
+        # most recent trading day's *features*, with no target required.
+        live_row = self._feature_pipeline.build_live_features(ohlcv)
+        if live_row is None:
+            raise PredictionError(
+                f"Not enough recent history for '{ticker}' to compute today's features "
+                "(technical indicators need a warm-up window)."
+            )
         predicted_log_return = float(
-            final_model.predict(last_row[feature_columns].to_numpy(dtype=np.float64))[0]
+            final_model.predict(live_row[feature_columns].to_numpy(dtype=np.float64))[0]
         )
-        last_close = float(last_row["close"].iloc[0])
+        last_close = float(live_row["close"].iloc[0])
         predicted_next_close = last_close * float(np.exp(predicted_log_return))
+        # Approximate — doesn't know market holidays — but consistent with
+        # how AutoRegForecaster treats "next trading day" elsewhere in this
+        # codebase, and only used for labeling/tracking, not any math.
+        target_date = pd.Timestamp(live_row.index[0]) + pd.tseries.offsets.BDay(1)
 
         interval_low = interval_high = interval_confidence = None
         try:
@@ -162,7 +177,9 @@ class PredictionService:
 
         drift_report = check_feature_drift(features_df, feature_columns)
 
-        self._log_experiment(ticker, model_name, feature_columns, model_backtest, baseline_backtest)
+        self._log_experiment(
+            ticker, model_name, feature_columns, model_backtest, baseline_backtest, drift_report
+        )
 
         return PredictionReport(
             ticker=ticker,
@@ -174,6 +191,7 @@ class PredictionService:
             predicted_log_return=predicted_log_return,
             predicted_next_close=predicted_next_close,
             last_close=last_close,
+            target_date=target_date,
             live_quote=self.get_live_quote(ticker),
             interval_low=interval_low,
             interval_high=interval_high,
@@ -188,6 +206,7 @@ class PredictionService:
         feature_columns: list[str],
         model_backtest: BacktestResult,
         baseline_backtest: BacktestResult,
+        drift_report: DriftReport,
     ) -> None:
         try:
             self._experiment_tracker.log_backtest(
@@ -199,6 +218,8 @@ class PredictionService:
                     "baseline_directional_accuracy": baseline_backtest.mean_directional_accuracy,
                     "model_rmse_price": model_backtest.mean_rmse_price,
                     "baseline_rmse_price": baseline_backtest.mean_rmse_price,
+                    "has_drift": drift_report.has_drift,
+                    "drifted_feature_count": len(drift_report.drifted_features),
                 },
             )
         except Exception:

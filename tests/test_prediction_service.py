@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from evaluation.backtest import BacktestResult, FoldMetrics
@@ -64,6 +65,20 @@ def test_analyze_raises_on_too_little_history(make_ohlcv):
         service.analyze("TINY", "2020-01-01", "2021-12-31", "Ridge (linear)")
 
 
+def test_prediction_targets_a_genuinely_future_date_not_already_known_data(synthetic_ohlcv):
+    """Regression test: the live prediction used to be built from
+    features_df's last row, which build() drops the *actual* most recent
+    trading day from (nothing to shift its target in from yet) — so
+    'last_close' was silently one day stale, and 'predicted_next_close' was
+    "predicting" a close that was already sitting in `ohlcv`. Both must now
+    reflect the true most recent day and a date strictly after it."""
+    service = _service(_FakeDataSource(synthetic_ohlcv))
+    report = service.analyze("FAKE", "2020-01-01", "2021-12-31", "Ridge (linear)")
+
+    assert report.last_close == synthetic_ohlcv["Close"].iloc[-1]
+    assert report.target_date > synthetic_ohlcv.index[-1]
+
+
 def _report_with_directional_accuracies(model_acc: float, baseline_acc: float) -> PredictionReport:
     model_backtest = BacktestResult(model_name="test-model")
     model_backtest.folds = [
@@ -77,8 +92,8 @@ def _report_with_directional_accuracies(model_acc: float, baseline_acc: float) -
         ticker="X", ohlcv=None, features_df=None, model_name="test-model",
         model_backtest=model_backtest, baseline_backtest=baseline_backtest,
         predicted_log_return=0.0, predicted_next_close=100.0, last_close=100.0,
-        live_quote=None, interval_low=None, interval_high=None,
-        interval_confidence=None, drift_report=None,
+        target_date=pd.Timestamp("2026-01-02"), live_quote=None, interval_low=None,
+        interval_high=None, interval_confidence=None, drift_report=None,
     )
 
 

@@ -13,7 +13,16 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 
-@pytest.mark.parametrize("page", ["app.py", "pages/prediction.py", "pages/watchlist.py"])
+@pytest.mark.parametrize(
+    "page",
+    [
+        "app.py",
+        "pages/prediction.py",
+        "pages/watchlist.py",
+        "pages/track_record.py",
+        "pages/monitoring.py",
+    ],
+)
 def test_page_boots_to_login_gate_without_exceptions(page):
     at = AppTest.from_file(page)
     at.run(timeout=30)

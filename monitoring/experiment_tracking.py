@@ -1,15 +1,28 @@
 """Every backtest run — which ticker, which model, what it scored — gets
 logged so model quality over time is visible instead of disappearing the
-moment the next click overwrites it. Behind a Protocol with a Null Object
-default so PredictionService always has a tracker to call, whether or not
-MLflow is installed or enabled (Open/Closed + Dependency Inversion, same
-pattern as MarketDataSource and MacroFeatureSource elsewhere)."""
+moment the next click overwrites it. Behind a Protocol so PredictionService
+never depends on a concrete tracker (Dependency Inversion, same pattern as
+MarketDataSource and MacroFeatureSource elsewhere).
+
+Two trackers compose here, not one:
+- `SqliteExperimentTracker` (sqlite_tracker.py) — always on, no extra
+  dependency, upserts one row per (ticker, model, day), browsable from the
+  app's own Monitoring page.
+- `MlflowExperimentTracker` — optional, heavier, append-only by MLflow's
+  own design (every run is its own permanent record, not upserted), for
+  anyone who wants the fuller MLflow UI/ecosystem.
+
+`build_experiment_tracker()` always includes the former and adds the
+latter only when available and enabled.
+"""
 
 from __future__ import annotations
 
 from typing import Protocol
 
 from config import log, settings
+
+from .sqlite_tracker import SqliteExperimentTracker
 
 
 class ExperimentTracker(Protocol):
@@ -21,10 +34,30 @@ class NullExperimentTracker:
         return None
 
 
+class CompositeExperimentTracker:
+    """Logs to every configured tracker; one tracker failing (e.g. MLflow
+    hitting an environment-specific import error) never blocks another."""
+
+    def __init__(self, trackers: list[ExperimentTracker]):
+        self._trackers = trackers
+
+    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
+        for tracker in self._trackers:
+            try:
+                tracker.log_backtest(ticker, model_name, params, metrics)
+            except Exception:
+                log.warning(
+                    "%s failed to log %s/%s", type(tracker).__name__, ticker, model_name,
+                    exc_info=True,
+                )
+
+
 class MlflowExperimentTracker:
     """Logs to a local SQLite store (`sqlite:///mlflow.db`) by default — no
     server needed for logging to work; run `mlflow ui --backend-store-uri
-    sqlite:///mlflow.db` in the project directory to browse runs."""
+    sqlite:///mlflow.db` in the project directory to browse runs. Every
+    call creates a new run — that's MLflow's own append-only data model,
+    not something this wrapper controls."""
 
     def __init__(self, tracking_uri: str, experiment_name: str):
         import mlflow
@@ -44,13 +77,19 @@ class MlflowExperimentTracker:
 
 
 def build_experiment_tracker() -> ExperimentTracker:
-    if not settings.enable_experiment_tracking:
-        return NullExperimentTracker()
-    try:
-        return MlflowExperimentTracker(settings.mlflow_tracking_uri, settings.mlflow_experiment_name)
-    except ImportError as e:
-        # Either mlflow itself isn't installed, or one of its transitive
-        # imports failed (e.g. `cryptography`'s native extension blocked by
-        # an OS-level policy) — either way, degrade gracefully.
-        log.warning("MLflow experiment tracking unavailable (%s); disabling it.", e)
-        return NullExperimentTracker()
+    trackers: list[ExperimentTracker] = [SqliteExperimentTracker(settings.monitoring_db_path)]
+
+    if settings.enable_experiment_tracking:
+        try:
+            trackers.append(
+                MlflowExperimentTracker(settings.mlflow_tracking_uri, settings.mlflow_experiment_name)
+            )
+        except ImportError as e:
+            # Either mlflow itself isn't installed, or one of its transitive
+            # imports failed (e.g. `cryptography`'s native extension blocked
+            # by an OS-level policy) — either way, the always-on SQLite
+            # tracker above still works, so this only disables the optional
+            # extra, not monitoring as a whole.
+            log.warning("MLflow experiment tracking unavailable (%s); continuing without it.", e)
+
+    return trackers[0] if len(trackers) == 1 else CompositeExperimentTracker(trackers)

@@ -9,11 +9,17 @@ import matplotlib.pyplot as plt
 
 from config import settings
 from services import AVAILABLE_MODELS, PredictionError
-from web_context import get_auth_service, get_prediction_service, get_sentiment_service
+from web_context import (
+    get_auth_service,
+    get_prediction_service,
+    get_sentiment_service,
+    get_track_record_service,
+)
 
 auth_service = get_auth_service()
 prediction_service = get_prediction_service()
 sentiment_service = get_sentiment_service()
+track_record_service = get_track_record_service()
 
 _defaults = {
     "is_authenticated": False,
@@ -22,6 +28,7 @@ _defaults = {
     "sentiment": None,
     "last_ticker": "",
     "load_attempted": False,
+    "track_record_resolved_this_session": False,
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -63,6 +70,16 @@ if st.sidebar.button("Logout"):
     for k, v in _defaults.items():
         st.session_state[k] = v
     st.rerun()
+
+# Checking for newly-resolvable predictions means live network calls (to
+# fetch what actually happened), so this runs once per session, not on
+# every rerun — same reasoning as the sentiment fetch below.
+if not st.session_state.track_record_resolved_this_session:
+    try:
+        track_record_service.resolve_pending()
+    except Exception:
+        pass  # best-effort — a stale track record isn't worth failing the page over
+    st.session_state.track_record_resolved_this_session = True
 
 if not settings.av_api_key:
     st.sidebar.warning(
@@ -106,6 +123,10 @@ if load_btn:
             st.session_state.report = prediction_service.analyze(
                 user_input, start=settings.history_start, model_name=model_name
             )
+            # Recorded before anyone knows the outcome — that's what makes
+            # the track record honest rather than something that could be
+            # cherry-picked after the fact.
+            track_record_service.record_prediction(st.session_state.report)
             # Fetched once here, alongside the report, and cached — not on
             # every rerun. Sentiment is a live network call (headlines),
             # and this page reruns on any widget interaction, not just a
@@ -191,7 +212,8 @@ if report.model_backtest.last_fold_index is not None:
     ax2.legend()
     fig2.tight_layout(); st.pyplot(fig2); plt.close(fig2)
 
-st.subheader(f'🔮 Predicted Next Close: **${report.predicted_next_close:,.2f}**')
+target_date_str = report.target_date.strftime("%A, %b %d")
+st.subheader(f'🔮 Predicted Close for {target_date_str}: **${report.predicted_next_close:,.2f}**')
 if report.interval_low is not None:
     st.caption(
         f"Model: {model_name} · predicted log-return: {report.predicted_log_return:+.4f} "
@@ -204,6 +226,11 @@ else:
         f"Model: {model_name} · predicted log-return: {report.predicted_log_return:+.4f} "
         f"· last close: ${report.last_close:,.2f}"
     )
+st.caption(
+    "This prediction has been recorded and will be checked against the real close once "
+    f"{target_date_str} has passed — see the **Track Record** page for how {model_name} "
+    f"has actually done on {report.ticker} (and other tickers) over time."
+)
 
 if report.live_quote:
     st.metric(

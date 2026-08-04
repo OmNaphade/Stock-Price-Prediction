@@ -7,14 +7,17 @@ import pandas as pd
 
 from config import settings
 from services import AVAILABLE_MODELS, PredictionError
-from web_context import get_auth_service, get_prediction_service
+from web_context import get_auth_service, get_prediction_service, get_track_record_service
 
 auth_service = get_auth_service()
 prediction_service = get_prediction_service()
+track_record_service = get_track_record_service()
 
 if "is_authenticated" not in st.session_state:
     st.session_state.is_authenticated = False
     st.session_state.username = ""
+if "track_record_resolved_this_session" not in st.session_state:
+    st.session_state.track_record_resolved_this_session = False
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
 if not st.session_state.is_authenticated:
@@ -38,6 +41,13 @@ if st.sidebar.button("Logout"):
     st.session_state.is_authenticated = False
     st.session_state.username = ""
     st.rerun()
+
+if not st.session_state.track_record_resolved_this_session:
+    try:
+        track_record_service.resolve_pending()
+    except Exception:
+        pass
+    st.session_state.track_record_resolved_this_session = True
 
 st.markdown("# 📈 Watchlist Comparison")
 st.caption(
@@ -69,6 +79,7 @@ for i, ticker in enumerate(tickers):
         report = prediction_service.analyze(
             ticker, start=settings.history_start, model_name=model_name
         )
+        track_record_service.record_prediction(report)
         pct_change = (report.predicted_next_close / report.last_close - 1) * 100
         rows.append(
             {

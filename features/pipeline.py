@@ -1,6 +1,6 @@
 """Turns raw OHLCV into a model-ready table.
 
-Two correctness fixes relative to the original app live here:
+Three correctness fixes relative to the original app live here:
 
 1. The target is the next-day *log return*, not the next-day raw close.
    Price is trending and non-stationary; a model fit to reproduce it mostly
@@ -10,6 +10,14 @@ Two correctness fixes relative to the original app live here:
    nothing carries the raw price level, so a single fitted model behaves
    consistently whether the ticker trades at $5 or $500, and no separate
    feature-scaling step is required for the linear model.
+3. `build()` (for training/backtesting) and `build_live_features()` (for
+   the actual "predict tomorrow" step) are deliberately different methods,
+   not one method reused for both. `build()` requires a known target, so
+   it correctly drops the most recent trading day (nothing to shift its
+   target in from yet) — but that most recent day is exactly the row a
+   live forecast needs to predict *from*. Reusing `build()`'s output for
+   the live prediction silently predicts a date whose close is already
+   sitting in the fetched data, not a genuinely future one.
 """
 
 from __future__ import annotations
@@ -50,20 +58,13 @@ class FeaturePipeline:
             cols += ["macro_rate_chg_5d", "macro_cpi_yoy"]
         return cols
 
-    def build(self, ohlcv: pd.DataFrame) -> pd.DataFrame:
-        """Returns a DataFrame indexed like `ohlcv`, with feature columns,
-        a pass-through 'close' column, and TARGET_COLUMN — rows with any
-        NaN (warm-up windows, and the final row with no next-day target)
-        are dropped. If macro features are enabled but the fetch fails,
-        those columns come back all-NaN and get dropped along with every
-        row that needs them — an empty/short result surfaces as the
-        existing "not enough rows" error upstream, rather than silently
-        training on a feature that's actually missing."""
-        if ohlcv.empty:
-            return pd.DataFrame(
-                columns=[*self.feature_columns, "close", TARGET_COLUMN, TARGET_DATE_COLUMN]
-            )
-
+    def _compute_all(self, ohlcv: pd.DataFrame) -> pd.DataFrame:
+        """Every feature column plus 'close', TARGET_COLUMN, and
+        TARGET_DATE_COLUMN, indexed like `ohlcv`, with no rows dropped yet.
+        The most recent row always has a NaN target (and NaT target date)
+        here — there's nothing after it to shift in. Shared by both
+        `build()` and `build_live_features()` so the two can never define
+        a feature differently by accident."""
         df = ohlcv.copy()
         close = df["Close"]
         log_close = np.log(close)
@@ -104,11 +105,36 @@ class FeaturePipeline:
             )
 
         out[TARGET_COLUMN] = log_close.shift(-1) - log_close
-        # Computed from out's own (still-complete) index before dropna, so
-        # the last surviving row still correctly gets the next calendar
-        # date even though that date's own row gets dropped below (it has
-        # no target of its own — nothing after it to shift in).
         out[TARGET_DATE_COLUMN] = out.index.to_series().shift(-1)
+        return out
 
+    def build(self, ohlcv: pd.DataFrame) -> pd.DataFrame:
+        """For training/backtesting: a DataFrame with feature columns, a
+        pass-through 'close' column, and TARGET_COLUMN — rows with any NaN
+        (warm-up windows, and the most recent trading day, which has no
+        target yet) are dropped. If macro features are enabled but the
+        fetch fails, those columns come back all-NaN and get dropped along
+        with every row that needs them — an empty/short result surfaces as
+        the existing "not enough rows" error upstream, rather than
+        silently training on a feature that's actually missing."""
+        if ohlcv.empty:
+            return pd.DataFrame(
+                columns=[*self.feature_columns, "close", TARGET_COLUMN, TARGET_DATE_COLUMN]
+            )
         ordered = [*self.feature_columns, "close", TARGET_COLUMN, TARGET_DATE_COLUMN]
-        return out[ordered].dropna()
+        return self._compute_all(ohlcv)[ordered].dropna()
+
+    def build_live_features(self, ohlcv: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """For the actual "predict tomorrow" step: the single most recent
+        trading day's feature row — the one `build()` necessarily drops,
+        since it has no known target yet. Returns None if that row's
+        features aren't all computable (e.g. `ohlcv` is shorter than the
+        longest warm-up window), since a partially-NaN feature vector isn't
+        safe to feed a model that was trained without ever seeing NaNs."""
+        if ohlcv.empty:
+            return None
+        computed = self._compute_all(ohlcv)
+        live_row = computed.iloc[[-1]]
+        if live_row[self.feature_columns].isna().any(axis=None):
+            return None
+        return live_row[[*self.feature_columns, "close"]]

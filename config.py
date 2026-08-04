@@ -39,6 +39,9 @@ class Settings:
     max_login_attempts: int = 5
     lockout_minutes: int = 15
 
+    # Prediction track record — its own SQLite file, separate from users.db
+    track_record_db_path: str = "track_record.db"
+
     # Modeling
     min_training_rows: int = 60
     walk_forward_folds: int = 5
@@ -46,10 +49,15 @@ class Settings:
     autoreg_max_lags: int = 60
     autoreg_forecast_days: int = 30
 
-    # Experiment tracking (MLflow) — a local SQLite file by default (the
-    # plain filesystem store is deprecated as of MLflow 2.16+), no server
-    # needed for logging to work; `mlflow ui --backend-store-uri
-    # sqlite:///mlflow.db` reads the same file.
+    # Model monitoring — always-on, SQLite-backed, no extra dependency;
+    # one row per (ticker, model, day). See monitoring/sqlite_tracker.py.
+    monitoring_db_path: str = "monitoring.db"
+
+    # Experiment tracking (MLflow) — optional and additive to the above.
+    # Local SQLite file by default (the plain filesystem store is
+    # deprecated as of MLflow 2.16+), no server needed for logging to
+    # work; `mlflow ui --backend-store-uri sqlite:///mlflow.db` reads the
+    # same file.
     enable_experiment_tracking: bool = True
     mlflow_tracking_uri: str = field(
         default_factory=lambda: os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")

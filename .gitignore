@@ -1,5 +1,7 @@
 # Secrets / local data
 users.db
+track_record.db
+monitoring.db
 .streamlit/secrets.toml
 *.env
 .env
