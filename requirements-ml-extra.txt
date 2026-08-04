@@ -1,0 +1,13 @@
+# Optional extras: install with `pip install -r requirements-ml-extra.txt`
+# (after the base requirements.txt) to enable:
+#   - the "LSTM (deep learning)" model choice (models/lstm.py)
+#   - MLflow experiment tracking (monitoring/experiment_tracking.py)
+#
+# Not part of requirements.txt on purpose — both are large installs, and
+# free-tier cloud hosts (Render free tier, Streamlit Community Cloud) have
+# tight memory/build-time budgets. Every feature built on these degrades
+# gracefully without them: the LSTM option simply doesn't appear in the
+# model dropdown, and experiment tracking silently no-ops.
+
+torch==2.3.1
+mlflow==2.14.1
