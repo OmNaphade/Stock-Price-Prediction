@@ -5,29 +5,15 @@ st.set_page_config(page_title="Model Monitoring", page_icon="📈")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from auth_ui import require_authenticated_user
 from services import AVAILABLE_MODELS
 from web_context import get_auth_service, get_monitoring_service
 
 auth_service = get_auth_service()
 monitoring_service = get_monitoring_service()
 
-if "is_authenticated" not in st.session_state:
-    st.session_state.is_authenticated = False
-    st.session_state.username = ""
-
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
-if not st.session_state.is_authenticated:
-    st.title("Login to Stock Prediction App")
-    username = st.text_input("Username:")
-    password = st.text_input("Password:", type="password")
-    if st.button("Login", use_container_width=True):
-        result = auth_service.login(username, password)
-        if result.success:
-            st.session_state.is_authenticated = True
-            st.session_state.username = username
-            st.rerun()
-        else:
-            st.error(result.message)
+if not require_authenticated_user(auth_service):
     st.stop()
 
 

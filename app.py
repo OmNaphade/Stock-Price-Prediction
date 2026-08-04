@@ -7,6 +7,7 @@ st.set_page_config(
 
 import matplotlib.pyplot as plt
 
+from auth_ui import require_authenticated_user
 from config import settings
 from services import AVAILABLE_MODELS, PredictionError
 from web_context import (
@@ -38,31 +39,7 @@ for k, v in _defaults.items():
 
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
-if not st.session_state.is_authenticated:
-    st.title("📈 Stock Prediction App")
-    st.subheader("Login / Register")
-
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Login", use_container_width=True):
-            result = auth_service.login(username, password)
-            if result.success:
-                st.session_state.is_authenticated = True
-                st.session_state.username = username
-                st.success(result.message)
-                st.rerun()
-            else:
-                st.error(result.message)
-    with col2:
-        if st.button("Register", use_container_width=True):
-            result = auth_service.register(username, password)
-            if result.success:
-                st.success(result.message)
-            else:
-                st.error(result.message)
+if not require_authenticated_user(auth_service, title="📈 Stock Prediction App"):
     st.stop()
 
 

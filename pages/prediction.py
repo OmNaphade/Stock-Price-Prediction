@@ -4,6 +4,7 @@ st.set_page_config(page_title="Stock Price Prediction", page_icon="📈")
 
 import plotly.graph_objects as go
 
+from auth_ui import require_authenticated_user
 from data_access.reference import load_equity_list, periods_and_intervals
 from data_access.sources import YFinanceSource
 from models import AutoRegForecaster
@@ -12,47 +13,8 @@ from web_context import get_auth_service
 auth_service = get_auth_service()
 yfinance_source = YFinanceSource()
 
-if "is_authenticated" not in st.session_state:
-    st.session_state.is_authenticated = False
-    st.session_state.username = ""
-
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
-if not st.session_state.is_authenticated:
-    st.title("Login to Stock Prediction App")
-
-    username = st.text_input("Username:")
-    password = st.text_input("Password:", type="password")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Login", use_container_width=True):
-            result = auth_service.login(username, password)
-            if result.success:
-                st.session_state.is_authenticated = True
-                st.session_state.username = username
-                st.success(result.message)
-                st.rerun()
-            else:
-                st.error(result.message)
-
-    with col2:
-        if st.button("Register New User", use_container_width=True):
-            result = auth_service.register(username, password)
-            if result.success:
-                st.success(result.message)
-            else:
-                st.error(result.message)
-
-    with st.expander("Forgot Password?"):
-        reset_username = st.text_input("Username:", key="reset_user")
-        reset_new_password = st.text_input("New Password:", type="password", key="reset_pw")
-        if st.button("Reset Password"):
-            result = auth_service.reset_password(reset_username, reset_new_password)
-            if result.success:
-                st.success(result.message)
-            else:
-                st.error(result.message)
-
+if not require_authenticated_user(auth_service):
     st.stop()
 
 
