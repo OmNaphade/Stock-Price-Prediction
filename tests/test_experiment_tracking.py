@@ -15,7 +15,7 @@ mlflow = pytest.importorskip("mlflow")
 
 def test_null_tracker_is_a_no_op():
     tracker = NullExperimentTracker()
-    tracker.log_backtest("AAPL", "Ridge", params={"a": 1}, metrics={"b": 2.0})  # must not raise
+    tracker.log_backtest("alice", "AAPL", "Ridge", params={"a": 1}, metrics={"b": 2.0})  # must not raise
 
 
 def test_mlflow_tracker_logs_a_run(tmp_path):
@@ -31,6 +31,7 @@ def test_mlflow_tracker_logs_a_run(tmp_path):
         pytest.skip(f"mlflow SQLAlchemy backend unavailable in this environment: {e}")
 
     tracker.log_backtest(
+        username="alice",
         ticker="AAPL",
         model_name="Ridge",
         params={"n_folds": 5},
@@ -42,6 +43,7 @@ def test_mlflow_tracker_logs_a_run(tmp_path):
     assert experiment is not None
     runs = client.search_runs([experiment.experiment_id])
     assert len(runs) == 1
+    assert runs[0].data.params["username"] == "alice"
     assert runs[0].data.params["ticker"] == "AAPL"
     assert runs[0].data.metrics["directional_accuracy"] == 0.55
 

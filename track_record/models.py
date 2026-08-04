@@ -12,6 +12,7 @@ from typing import Optional
 
 @dataclass
 class PredictionRecord:
+    username: str  # whose prediction this is — each user has their own history
     ticker: str
     model_name: str
     made_at: str  # ISO timestamp

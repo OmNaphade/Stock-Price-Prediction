@@ -49,12 +49,13 @@ if not st.session_state.track_record_resolved_this_session:
 
 st.markdown("# 📊 Track Record")
 st.caption(
-    "Every prediction made anywhere in this app is recorded before its outcome is "
+    "Every prediction you make anywhere in this app is recorded before its outcome is "
     "known, then checked against the real close once its target date has passed. "
-    "This page is the receipts — not a claim, a record."
+    "This page is your receipts — not a claim, a record. (Only your own predictions — "
+    "everyone's track record here is their own.)"
 )
 
-all_records = track_record_service.get_track_record(limit=2000).records
+all_records = track_record_service.get_track_record(st.session_state.username, limit=2000).records
 if not all_records:
     st.info(
         "No predictions recorded yet. Analyze a ticker on the **app** or **watchlist** "
@@ -70,6 +71,7 @@ with col_model:
     model_filter = st.selectbox("Model", ["All"] + list(AVAILABLE_MODELS.keys()))
 
 summary = track_record_service.get_track_record(
+    st.session_state.username,
     ticker=None if ticker_filter == "All" else ticker_filter,
     model_name=None if model_filter == "All" else model_filter,
     limit=2000,

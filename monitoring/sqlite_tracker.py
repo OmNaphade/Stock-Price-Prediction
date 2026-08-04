@@ -1,12 +1,16 @@
 """Always-on, dependency-free model monitoring: one row per
-(ticker, model, day), upserted — re-running the same ticker/model more
-than once in a day updates that day's row instead of accumulating
+(user, ticker, model, day), upserted — re-running the same ticker/model
+more than once in a day updates that day's row instead of accumulating
 duplicates. That's a deliberate idempotency choice, not just tidiness:
 Ridge/GradientBoosting/LSTM are all seeded (`random_state=42` /
 `torch.manual_seed(42)`), so a same-day rerun on the same data produces
 the same backtest result anyway — logging it again as a new row would
 just be noise, and would make "how many times was this run" look like
 "how much history exists," which isn't what the monitoring page is for.
+
+Scoped per user (`username` is part of the primary key) — each user's
+Monitoring page shows only what they themselves have analyzed, not a
+dashboard shared across everyone logged into the app.
 
 This is the lightweight complement to the optional, heavier MLflow
 tracker in `experiment_tracking.py` — no server, no extra dependency,
@@ -24,7 +28,7 @@ from typing import Optional, Protocol
 from .models import ModelMetricRecord
 
 _COLUMNS = (
-    "ticker", "model_name", "log_date", "logged_at", "n_folds", "n_features",
+    "username", "ticker", "model_name", "log_date", "logged_at", "n_folds", "n_features",
     "model_directional_accuracy", "baseline_directional_accuracy",
     "model_rmse_price", "baseline_rmse_price", "has_drift", "drifted_feature_count",
 )
@@ -37,10 +41,14 @@ class ModelMetricsReader(Protocol):
     shaped for the writer's job (Interface Segregation)."""
 
     def get_recent(
-        self, ticker: Optional[str] = None, model_name: Optional[str] = None, limit: int = 500
+        self,
+        username: str,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 500,
     ) -> list[ModelMetricRecord]: ...
 
-    def get_tickers(self) -> list[str]: ...
+    def get_tickers(self, username: str) -> list[str]: ...
 
 
 def _row_to_record(row: tuple) -> ModelMetricRecord:
@@ -57,6 +65,7 @@ class SqliteExperimentTracker:
             self._conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS model_metrics (
+                    username                      TEXT NOT NULL,
                     ticker                        TEXT NOT NULL,
                     model_name                    TEXT NOT NULL,
                     log_date                      TEXT NOT NULL,
@@ -69,13 +78,13 @@ class SqliteExperimentTracker:
                     baseline_rmse_price           REAL,
                     has_drift                     INTEGER,
                     drifted_feature_count         INTEGER,
-                    PRIMARY KEY (ticker, model_name, log_date)
+                    PRIMARY KEY (username, ticker, model_name, log_date)
                 )
                 """
             )
             self._conn.commit()
 
-    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
+    def log_backtest(self, username: str, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
         log_date = date.today().isoformat()
         logged_at = datetime.now(timezone.utc).isoformat()
         has_drift = metrics.get("has_drift")
@@ -83,11 +92,11 @@ class SqliteExperimentTracker:
             self._conn.execute(
                 """
                 INSERT INTO model_metrics
-                    (ticker, model_name, log_date, logged_at, n_folds, n_features,
+                    (username, ticker, model_name, log_date, logged_at, n_folds, n_features,
                      model_directional_accuracy, baseline_directional_accuracy,
                      model_rmse_price, baseline_rmse_price, has_drift, drifted_feature_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(ticker, model_name, log_date) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(username, ticker, model_name, log_date) DO UPDATE SET
                     logged_at=excluded.logged_at,
                     n_folds=excluded.n_folds,
                     n_features=excluded.n_features,
@@ -99,7 +108,7 @@ class SqliteExperimentTracker:
                     drifted_feature_count=excluded.drifted_feature_count
                 """,
                 (
-                    ticker, model_name, log_date, logged_at,
+                    username, ticker, model_name, log_date, logged_at,
                     params.get("n_folds"), params.get("n_features"),
                     metrics.get("model_directional_accuracy"),
                     metrics.get("baseline_directional_accuracy"),
@@ -112,16 +121,20 @@ class SqliteExperimentTracker:
             self._conn.commit()
 
     def get_recent(
-        self, ticker: Optional[str] = None, model_name: Optional[str] = None, limit: int = 500
+        self,
+        username: str,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 500,
     ) -> list[ModelMetricRecord]:
-        clauses, params_list = [], []
+        clauses, params_list = ["username = ?"], [username]
         if ticker:
             clauses.append("ticker = ?")
             params_list.append(ticker)
         if model_name:
             clauses.append("model_name = ?")
             params_list.append(model_name)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = f"WHERE {' AND '.join(clauses)}"
         with self._lock:
             rows = self._conn.execute(
                 f"SELECT {', '.join(_COLUMNS)} FROM model_metrics "
@@ -130,9 +143,10 @@ class SqliteExperimentTracker:
             ).fetchall()
         return [_row_to_record(row) for row in rows]
 
-    def get_tickers(self) -> list[str]:
+    def get_tickers(self, username: str) -> list[str]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT DISTINCT ticker FROM model_metrics ORDER BY ticker"
+                "SELECT DISTINCT ticker FROM model_metrics WHERE username = ? ORDER BY ticker",
+                (username,),
             ).fetchall()
         return [row[0] for row in rows]

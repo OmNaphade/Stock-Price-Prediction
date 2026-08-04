@@ -2,6 +2,14 @@
 that wires a concrete MarketDataSource to a concrete model — Streamlit
 pages call `PredictionService.analyze()` and never touch yfinance, sklearn,
 or the backtester directly.
+
+Deliberately has no side effects and no notion of "who's asking" — it
+takes a ticker and a model name, returns a report. Recording that
+prediction to the track record or logging it to monitoring both happen
+as explicit calls the caller makes with the report afterward (see
+`TrackRecordService.record_prediction` and
+`ModelMonitoringService.log_from_report`), each carrying the current
+user's name — keeping this class free of both concerns.
 """
 
 from __future__ import annotations
@@ -23,7 +31,6 @@ from models.base import Predictor
 from models.baseline import NaivePredictor
 from models.gradient_boosting import GradientBoostingReturnPredictor
 from models.linear import RidgeReturnPredictor
-from monitoring.experiment_tracking import ExperimentTracker, build_experiment_tracker
 
 AVAILABLE_MODELS: dict[str, Callable[[], Predictor]] = {
     "Naive (baseline)": NaivePredictor,
@@ -50,6 +57,7 @@ class PredictionReport:
     ticker: str
     ohlcv: pd.DataFrame
     features_df: pd.DataFrame
+    feature_columns: list[str]
     model_name: str
     model_backtest: BacktestResult
     baseline_backtest: BacktestResult
@@ -85,11 +93,9 @@ class PredictionService:
         self,
         data_source: MarketDataSource,
         feature_pipeline: Optional[FeaturePipeline] = None,
-        experiment_tracker: Optional[ExperimentTracker] = None,
     ):
         self._data_source = data_source
         self._feature_pipeline = feature_pipeline or FeaturePipeline()
-        self._experiment_tracker = experiment_tracker or build_experiment_tracker()
 
     def load_history(self, ticker: str, start: str, end: str) -> pd.DataFrame:
         return self._data_source.get_history(ticker, start, end)
@@ -177,14 +183,11 @@ class PredictionService:
 
         drift_report = check_feature_drift(features_df, feature_columns)
 
-        self._log_experiment(
-            ticker, model_name, feature_columns, model_backtest, baseline_backtest, drift_report
-        )
-
         return PredictionReport(
             ticker=ticker,
             ohlcv=ohlcv,
             features_df=features_df,
+            feature_columns=feature_columns,
             model_name=model_name,
             model_backtest=model_backtest,
             baseline_backtest=baseline_backtest,
@@ -198,29 +201,3 @@ class PredictionService:
             interval_confidence=interval_confidence,
             drift_report=drift_report,
         )
-
-    def _log_experiment(
-        self,
-        ticker: str,
-        model_name: str,
-        feature_columns: list[str],
-        model_backtest: BacktestResult,
-        baseline_backtest: BacktestResult,
-        drift_report: DriftReport,
-    ) -> None:
-        try:
-            self._experiment_tracker.log_backtest(
-                ticker=ticker,
-                model_name=model_name,
-                params={"n_folds": len(model_backtest.folds), "n_features": len(feature_columns)},
-                metrics={
-                    "model_directional_accuracy": model_backtest.mean_directional_accuracy,
-                    "baseline_directional_accuracy": baseline_backtest.mean_directional_accuracy,
-                    "model_rmse_price": model_backtest.mean_rmse_price,
-                    "baseline_rmse_price": baseline_backtest.mean_rmse_price,
-                    "has_drift": drift_report.has_drift,
-                    "drifted_feature_count": len(drift_report.drifted_features),
-                },
-            )
-        except Exception:
-            log.warning("Experiment tracking failed for %s/%s", ticker, model_name, exc_info=True)

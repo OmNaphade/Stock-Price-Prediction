@@ -15,6 +15,7 @@ from data_access.news import build_default_news_source
 from data_access.sources import MarketDataSource
 from features.pipeline import FeaturePipeline
 from features.sentiment import VaderSentimentScorer
+from monitoring.experiment_tracking import build_experiment_tracker
 from monitoring.sqlite_tracker import SqliteExperimentTracker
 from services import ModelMonitoringService, PredictionService, SentimentService, TrackRecordService
 from track_record.repository import SqlitePredictionRecordRepository
@@ -53,8 +54,12 @@ def get_track_record_service() -> TrackRecordService:
 
 @st.cache_resource
 def get_monitoring_service() -> ModelMonitoringService:
-    # A separate connection to the same monitoring.db PredictionService's
-    # own SqliteExperimentTracker writes to (SQLite supports multiple
-    # connections to one file) — this side only ever reads.
+    # The writer is build_experiment_tracker()'s composite (always-on
+    # SQLite + optional MLflow); the reader is a plain SqliteExperimentTracker
+    # of its own — the Monitoring page only ever reads from the always-on
+    # store (MLflow isn't browsable in-app anyway). Two narrow interfaces,
+    # injected separately, even though the writer's SQLite half and the
+    # reader point at the same underlying file.
+    tracker = build_experiment_tracker()
     reader = SqliteExperimentTracker(settings.monitoring_db_path)
-    return ModelMonitoringService(reader)
+    return ModelMonitoringService(tracker, reader)

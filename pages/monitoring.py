@@ -42,10 +42,11 @@ st.markdown("# 🩺 Model Monitoring")
 st.caption(
     "One entry per ticker/model/day — every backtest run updates that day's row rather "
     "than piling up duplicates, so this reflects how each model has actually looked over "
-    "time, not how many times someone clicked Analyze."
+    "time, not how many times someone clicked Analyze. (Scoped to your own analyses — "
+    "not a dashboard shared across everyone using this app.)"
 )
 
-known_tickers = monitoring_service.get_known_tickers()
+known_tickers = monitoring_service.get_known_tickers(st.session_state.username)
 if not known_tickers:
     st.info(
         "No backtests logged yet. Analyze a ticker on the **app** or **watchlist** page "
@@ -60,6 +61,7 @@ with col_model:
     model_filter = st.selectbox("Model", ["All"] + list(AVAILABLE_MODELS.keys()))
 
 summary = monitoring_service.get_summary(
+    st.session_state.username,
     ticker=ticker_filter,
     model_name=None if model_filter == "All" else model_filter,
 )

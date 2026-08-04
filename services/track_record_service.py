@@ -3,6 +3,13 @@ what was predicted when it was made, resolve it against the real close
 once the target date has passed, and summarize how often that's actually
 been right — the whole point being that this can't be gamed after the
 fact, since every record is written before its outcome is known.
+
+Every record belongs to one user — this is a personal accuracy history,
+not a shared dashboard, so `record_prediction` and `get_track_record` both
+require a username. `resolve_pending`, on the other hand, is intentionally
+NOT scoped to one user: resolving a prediction against the real market
+close is the same fact-check for everyone, so it walks every user's
+pending predictions in one pass.
 """
 
 from __future__ import annotations
@@ -35,8 +42,9 @@ class TrackRecordService:
         self._repo = repository
         self._data_source = data_source
 
-    def record_prediction(self, report: PredictionReport) -> None:
+    def record_prediction(self, username: str, report: PredictionReport) -> None:
         record = PredictionRecord(
+            username=username,
             ticker=report.ticker,
             model_name=report.model_name,
             made_at=datetime.now(timezone.utc).isoformat(),
@@ -49,15 +57,27 @@ class TrackRecordService:
 
     def resolve_pending(self) -> int:
         """Finds every prediction whose target date has fully passed (not
-        just arrived — 'today' might not have closed yet) and fills in
-        what actually happened. Safe to call repeatedly; already-resolved
-        records are never touched again."""
+        just arrived — 'today' might not have closed yet), across every
+        user, and fills in what actually happened. Safe to call
+        repeatedly; already-resolved records are never touched again."""
         pending = self._repo.get_unresolved_before(date.today().isoformat())
+        # Two users predicting the same ticker on the same target date are
+        # two separate records but the same real-world fact — one fetch
+        # serves both instead of hitting the data source once per record.
+        actual_close_cache: dict[tuple[str, str], Optional[float]] = {}
         resolved_count = 0
         for record in pending:
-            actual_close = self._fetch_actual_close(record.ticker, record.target_date)
+            cache_key = (record.ticker, record.target_date)
+            if cache_key not in actual_close_cache:
+                actual_close_cache[cache_key] = self._fetch_actual_close(
+                    record.ticker, record.target_date
+                )
+            actual_close = actual_close_cache[cache_key]
             if actual_close is not None:
-                self._repo.resolve(record.ticker, record.model_name, record.target_date, actual_close)
+                self._repo.resolve(
+                    record.username, record.ticker, record.model_name, record.target_date,
+                    actual_close,
+                )
                 resolved_count += 1
         return resolved_count
 
@@ -80,9 +100,13 @@ class TrackRecordService:
         return float(on_or_after["Close"].iloc[0])
 
     def get_track_record(
-        self, ticker: Optional[str] = None, model_name: Optional[str] = None, limit: int = 200
+        self,
+        username: str,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 200,
     ) -> TrackRecordSummary:
-        records = self._repo.get_history(ticker, model_name, limit)
+        records = self._repo.get_history(username, ticker, model_name, limit)
         resolved = [r for r in records if r.is_resolved]
         pending = [r for r in records if not r.is_resolved]
 

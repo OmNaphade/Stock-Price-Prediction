@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 
 from evaluation.backtest import BacktestResult, FoldMetrics
-from monitoring.experiment_tracking import NullExperimentTracker
 from services.prediction_service import PredictionError, PredictionReport, PredictionService
 
 
@@ -24,9 +23,7 @@ class _FakeDataSource:
 
 
 def _service(data_source) -> PredictionService:
-    # Explicit NullExperimentTracker — tests should never touch a real
-    # MLflow store as a side effect of the default experiment_tracker=None.
-    return PredictionService(data_source, experiment_tracker=NullExperimentTracker())
+    return PredictionService(data_source)
 
 
 def test_analyze_end_to_end_with_fake_source(synthetic_ohlcv):
@@ -89,7 +86,7 @@ def _report_with_directional_accuracies(model_acc: float, baseline_acc: float) -
         FoldMetrics(0, 10, 0.0, 0.0, baseline_acc, 1.0, 1.0),
     ]
     return PredictionReport(
-        ticker="X", ohlcv=None, features_df=None, model_name="test-model",
+        ticker="X", ohlcv=None, features_df=None, feature_columns=[], model_name="test-model",
         model_backtest=model_backtest, baseline_backtest=baseline_backtest,
         predicted_log_return=0.0, predicted_next_close=100.0, last_close=100.0,
         target_date=pd.Timestamp("2026-01-02"), live_quote=None, interval_low=None,

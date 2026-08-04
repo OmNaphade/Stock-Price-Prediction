@@ -11,6 +11,7 @@ from config import settings
 from services import AVAILABLE_MODELS, PredictionError
 from web_context import (
     get_auth_service,
+    get_monitoring_service,
     get_prediction_service,
     get_sentiment_service,
     get_track_record_service,
@@ -20,6 +21,7 @@ auth_service = get_auth_service()
 prediction_service = get_prediction_service()
 sentiment_service = get_sentiment_service()
 track_record_service = get_track_record_service()
+monitoring_service = get_monitoring_service()
 
 _defaults = {
     "is_authenticated": False,
@@ -125,8 +127,10 @@ if load_btn:
             )
             # Recorded before anyone knows the outcome — that's what makes
             # the track record honest rather than something that could be
-            # cherry-picked after the fact.
-            track_record_service.record_prediction(st.session_state.report)
+            # cherry-picked after the fact. Both calls carry the current
+            # username since track record and monitoring are per-user.
+            track_record_service.record_prediction(st.session_state.username, st.session_state.report)
+            monitoring_service.log_from_report(st.session_state.username, st.session_state.report)
             # Fetched once here, alongside the report, and cached — not on
             # every rerun. Sentiment is a live network call (headlines),
             # and this page reruns on any widget interaction, not just a

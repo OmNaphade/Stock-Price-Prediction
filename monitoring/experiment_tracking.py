@@ -1,13 +1,13 @@
-"""Every backtest run — which ticker, which model, what it scored — gets
-logged so model quality over time is visible instead of disappearing the
-moment the next click overwrites it. Behind a Protocol so PredictionService
-never depends on a concrete tracker (Dependency Inversion, same pattern as
-MarketDataSource and MacroFeatureSource elsewhere).
+"""Every backtest run — which user, which ticker, which model, what it
+scored — gets logged so model quality over time is visible instead of
+disappearing the moment the next click overwrites it. Behind a Protocol so
+callers never depend on a concrete tracker (Dependency Inversion, same
+pattern as MarketDataSource and MacroFeatureSource elsewhere).
 
 Two trackers compose here, not one:
 - `SqliteExperimentTracker` (sqlite_tracker.py) — always on, no extra
-  dependency, upserts one row per (ticker, model, day), browsable from the
-  app's own Monitoring page.
+  dependency, upserts one row per (user, ticker, model, day), browsable
+  from the app's own Monitoring page.
 - `MlflowExperimentTracker` — optional, heavier, append-only by MLflow's
   own design (every run is its own permanent record, not upserted), for
   anyone who wants the fuller MLflow UI/ecosystem.
@@ -26,11 +26,15 @@ from .sqlite_tracker import SqliteExperimentTracker
 
 
 class ExperimentTracker(Protocol):
-    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None: ...
+    def log_backtest(
+        self, username: str, ticker: str, model_name: str, params: dict, metrics: dict
+    ) -> None: ...
 
 
 class NullExperimentTracker:
-    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
+    def log_backtest(
+        self, username: str, ticker: str, model_name: str, params: dict, metrics: dict
+    ) -> None:
         return None
 
 
@@ -41,13 +45,15 @@ class CompositeExperimentTracker:
     def __init__(self, trackers: list[ExperimentTracker]):
         self._trackers = trackers
 
-    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
+    def log_backtest(
+        self, username: str, ticker: str, model_name: str, params: dict, metrics: dict
+    ) -> None:
         for tracker in self._trackers:
             try:
-                tracker.log_backtest(ticker, model_name, params, metrics)
+                tracker.log_backtest(username, ticker, model_name, params, metrics)
             except Exception:
                 log.warning(
-                    "%s failed to log %s/%s", type(tracker).__name__, ticker, model_name,
+                    "%s failed to log %s/%s/%s", type(tracker).__name__, username, ticker, model_name,
                     exc_info=True,
                 )
 
@@ -66,8 +72,11 @@ class MlflowExperimentTracker:
         mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment(experiment_name)
 
-    def log_backtest(self, ticker: str, model_name: str, params: dict, metrics: dict) -> None:
-        with self._mlflow.start_run(run_name=f"{ticker}-{model_name}"):
+    def log_backtest(
+        self, username: str, ticker: str, model_name: str, params: dict, metrics: dict
+    ) -> None:
+        with self._mlflow.start_run(run_name=f"{username}-{ticker}-{model_name}"):
+            self._mlflow.log_param("username", username)
             self._mlflow.log_param("ticker", ticker)
             self._mlflow.log_param("model", model_name)
             for key, value in params.items():
