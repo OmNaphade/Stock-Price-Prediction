@@ -1,17 +1,17 @@
+# Mirrors .gitignore's intent: keep secrets and local state out of the
+# image. `COPY . .` in the Dockerfile doesn't respect .gitignore — only
+# this file — so without it, local DBs and secrets would get baked in.
+
 # Secrets / local data
 users.db
 track_record.db
 monitoring.db
-# WAL mode (infra/db.py) creates these sidecar files alongside each .db
 *.db-shm
 *.db-wal
 *.db-journal
 .streamlit/secrets.toml
 *.env
 .env
-
-# Manual/scheduled SQLite backups (scripts/backup_sqlite.py)
-backups/
 
 # MLflow local tracking store
 mlflow.db
@@ -35,6 +35,12 @@ venv/
 # Notebook checkpoints
 .ipynb_checkpoints/
 
-# OS / editor
+# VCS / editor / CI
+.git/
+.github/
+.vscode/
 .DS_Store
 Thumbs.db
+
+# Backups produced by scripts/backup_sqlite.py
+backups/

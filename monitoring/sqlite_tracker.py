@@ -20,10 +20,11 @@ instead of a separate `mlflow ui` process.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from datetime import date, datetime, timezone
 from typing import Optional, Protocol
+
+from infra.db import connect as _connect_hardened
 
 from .models import ModelMetricRecord
 
@@ -59,7 +60,7 @@ def _row_to_record(row: tuple) -> ModelMetricRecord:
 
 class SqliteExperimentTracker:
     def __init__(self, db_path: str = "monitoring.db"):
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn = _connect_hardened(db_path)
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute(

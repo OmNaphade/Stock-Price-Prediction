@@ -15,7 +15,7 @@
 
 This app helps you explore stock history and generate next-price forecasts from the browser, with every forecast benchmarked against a naive baseline so you can tell whether it's actually predictive.
 
-- **Authenticated access** with local username/password login, registration, and lockout after repeated failed attempts
+- **Email-based authenticated access** — register/login with an email + password, email ownership verified via a one-time code before the account can log in, lockout after repeated failed login attempts, and a secure OTP-based password reset (see [Authentication](#authentication))
 - **Ticker-based lookup** for equities such as `AAPL`, `TSLA`, `RELIANCE.NS`, and `TCS.NS`
 - **Historical analysis** with summaries, price charts, and moving averages
 - **Next-close prediction** with a choice of models (naive baseline, regularized linear, gradient boosting, and an optional LSTM), each evaluated with walk-forward backtesting and directional accuracy — not just a single train/test split
@@ -28,7 +28,9 @@ This app helps you explore stock history and generate next-price forecasts from 
 - **Multi-user by design** — the track record and monitoring history are both scoped per account: what you've analyzed and how it's turned out is yours, not merged with anyone else logged into the same app
 - **Watchlist page** comparing predictions across several tickers at once
 - **Alternative exploration page** under `pages/prediction.py` with candlestick charts and AutoReg forecasting
-- **Live market context** via `yfinance`, with optional Alpha Vantage support when an API key is available
+- **Live market context** via `yfinance`, with optional Alpha Vantage support when an API key is available, and optional OpenAlgo support for exchange-native NSE/BSE data via your own self-hosted OpenAlgo instance
+- **Multi-language UI** — switch between English, 中文, 한국어, 日本語, Türkçe, and Русский from the sidebar on any page
+- **Production-hardened SQLite** — WAL mode, busy-timeout, and integrity checks by default, with optional continuous Litestream replication so data survives a redeploy
 - **Docker-ready deployment** for consistent local and cloud execution
 
 ### Architecture
@@ -38,8 +40,11 @@ The app is organized in layers so the UI never touches a data provider, the data
 ```
 config.py            single source of settings (env vars / secrets)
 data_access/          MarketDataSource, MacroFeatureSource, NewsSource interfaces
-                       — yfinance, Alpha Vantage, FRED, NewsAPI, fallback chains
-auth/                 UserRepository + AuthService (hashing, lockout)
+                       — yfinance, Alpha Vantage, OpenAlgo, FRED, NewsAPI, fallback chains
+infra/                 shared SQLite hardening (WAL, busy-timeout, backup, integrity check)
+i18n/                   translator + language switcher; JSON catalogs per language
+auth/                 UserRepository + OtpRepository + EmailSender + AuthService
+                       (email identity, verification, lockout, OTP password reset)
 features/             FeaturePipeline: log-return target, technical indicators,
                        optional macro features; sentiment scoring (VADER)
 models/               Predictor interface: naive baseline, Ridge, gradient
@@ -82,7 +87,8 @@ This isn't an abstract goal bolted on afterward — every layer above exists bec
 | Layer | Technology |
 |---|---|
 | Frontend | Streamlit |
-| Data | yfinance, Alpha Vantage (optional) |
+| Localization | Custom `i18n/` translator (JSON catalogs) — English, 中文, 한국어, 日本語, Türkçe, Русский |
+| Data | yfinance, Alpha Vantage (optional), OpenAlgo (optional, self-hosted, NSE/BSE only) |
 | Analysis | NumPy, Pandas, Matplotlib, Plotly |
 | Forecasting | scikit-learn (Ridge, GradientBoosting), statsmodels AutoReg, optional PyTorch LSTM |
 | Backtesting | Walk-forward validation (`sklearn.model_selection.TimeSeriesSplit`) |
@@ -90,7 +96,9 @@ This isn't an abstract goal bolted on afterward — every layer above exists bec
 | Sentiment | VADER (`vaderSentiment`) over yfinance/NewsAPI headlines |
 | Model monitoring | SQLite (always on) + MLflow (optional, additive) |
 | Testing | pytest |
-| Authentication | SQLite + bcrypt |
+| Authentication | Email + password (SQLite, WAL, hardened) + bcrypt, with email-verified registration and OTP-based password reset |
+| Email delivery | `smtplib` (stdlib) — any SMTP provider; logs the code server-side instead when unconfigured |
+| Durability | Litestream (optional, continuous replication to S3-compatible storage) |
 | Containerization | Docker |
 | CI/CD | GitHub Actions |
 
@@ -101,7 +109,7 @@ This isn't an abstract goal bolted on afterward — every layer above exists bec
 ```
 User enters a ticker + picks a model
       │
-      ├── Auth check (AuthService → SqliteUserRepository)
+      ├── Auth check (AuthService → SqliteUserRepository / SqliteOtpRepository / EmailSender)
       │
       ├── PredictionService.analyze()
       │     ├── MarketDataSource: Alpha Vantage if AV_API_KEY is set,
@@ -122,7 +130,8 @@ The main app in [app.py](app.py) predicts the next close via `services.Predictio
 
 | Feature | Details |
 |---|---|
-| Login / Register | Local auth backed by SQLite and bcrypt, with lockout after repeated failed logins |
+| Login / Register | Email + password, backed by SQLite and bcrypt; registration requires verifying the email via an emailed code before the account can log in, and lockout after repeated failed logins |
+| Password reset | Request a code emailed to the account → enter the code + a new password. Replaces an earlier flow that reset a password with no identity check at all — see [Authentication](#authentication) |
 | Historical charts | Price history plus 100-day and 200-day moving averages |
 | Model selection | Naive baseline, Ridge (regularized linear), gradient boosting, optional LSTM — same interface, swap freely |
 | Backtested predictions | Walk-forward validation across multiple folds, with directional accuracy and price RMSE shown against the naive baseline |
@@ -136,6 +145,9 @@ The main app in [app.py](app.py) predicts the next close via `services.Predictio
 | Track record | Every prediction you make recorded pre-outcome, resolved against the real close once due, with a predicted-vs-actual chart and full history table — your own, not shared |
 | Multi-page Streamlit UI | Exploration page (`pages/prediction.py`), watchlist, track record, and monitoring, alongside the main app |
 | Cloud-friendly fetches | curl_cffi session fallback for yfinance reliability |
+| OpenAlgo data source (optional) | Your own self-hosted OpenAlgo instance as an exchange-native source for NSE/BSE (`.NS`/`.BO`) tickers, ahead of Alpha Vantage/yfinance in the provider chain when configured |
+| Multi-language UI | Sidebar language switcher — English, 中文, 한국어, 日本語, Türkçe, Русский — persisted for the session |
+| Hardened SQLite | WAL journaling, busy-timeout, `synchronous=NORMAL`, and integrity checks on every store by default (see [Production Hardening](#production-hardening-sqlite--durability)) |
 
 ---
 
@@ -147,6 +159,7 @@ The main app in [app.py](app.py) predicts the next close via `services.Predictio
 - `pip`
 - Optional: Docker Desktop
 - Optional: Alpha Vantage API key for better cloud reliability
+- Optional: a self-hosted [OpenAlgo](https://openalgo.in) instance + API key for exchange-native NSE/BSE data (see [OpenAlgo Integration](#openalgo-integration))
 
 ### Local Setup
 
@@ -162,11 +175,17 @@ python -m venv .venv
 # Install dependencies
 pip install -r requirements.txt
 
+# Optional: copy the env template and fill in whichever keys you want.
+# Everything in it is optional — the app runs fully without any of them.
+cp .env.example .env
+
 # Run the app
 streamlit run app.py
 ```
 
 Open the app in your browser at the URL Streamlit prints in the terminal, usually `http://localhost:8501`.
+
+`.env` is loaded automatically (`config.py` calls `load_dotenv()` at import time via `python-dotenv`) — it's a local-dev convenience so you don't have to `export` every variable in your shell each session. It's gitignored; never commit your real one. Real environment variables always take precedence over `.env` if both are set. This is separate from Streamlit Community Cloud's own secrets mechanism (`st.secrets`, backed by `.streamlit/secrets.toml` or the app's settings UI there) — `.env` only applies to local/Docker runs where `config.py` actually gets a chance to load it before the process's environment is read.
 
 ### Optional Extras (LSTM model + MLflow tracking)
 
@@ -186,7 +205,7 @@ The suite runs entirely offline — models and the backtester are tested against
 
 ### Optional API Keys
 
-None of these are required — the app works with none of them set, using free/no-key sources throughout. See the table below.
+None of these are required — the app works with none of them set, using free/no-key sources throughout. See `.env.example` for a ready-to-fill template, and the table below for what each one does.
 
 ---
 
@@ -194,13 +213,22 @@ None of these are required — the app works with none of them set, using free/n
 
 | Variable | Description |
 |---|---|
+| `SMTP_HOST` | SMTP server hostname — enables real email delivery for registration/reset OTP codes when set alongside the three below |
+| `SMTP_PORT` | SMTP port (default `587`, i.e. STARTTLS) |
+| `SMTP_USERNAME` | SMTP auth username (usually the sending mailbox address) |
+| `SMTP_PASSWORD` | SMTP auth password (for Gmail, an [App Password](https://myaccount.google.com/apppasswords), not your account password) |
+| `SMTP_FROM_ADDRESS` | `From:` address on outgoing mail (defaults to `SMTP_USERNAME` if unset) |
+| `SMTP_USE_TLS` | `"false"` to disable STARTTLS (default `true`) — only for providers that don't support it |
 | `AV_API_KEY` | Alpha Vantage key, used as the primary cloud data source when set |
+| `OPENALGO_BASE_URL` | Root URL of your own self-hosted OpenAlgo instance (e.g. `http://127.0.0.1:5000`, or a tunnel URL like ngrok while developing) — enables the OpenAlgo data source for NSE/BSE tickers when set alongside the key below |
+| `OPENALGO_API_KEY` | API key from your OpenAlgo instance's own settings page |
 | `FRED_API_KEY` | Free FRED key ([fred.stlouisfed.org](https://fred.stlouisfed.org)) — enables macro features (Treasury yield, CPI) in the feature set |
 | `NEWS_API_KEY` | Free NewsAPI.org dev key — broader headline coverage for the sentiment panel; falls back to yfinance's free news feed if unset |
 | `MLFLOW_TRACKING_URI` | Overrides the default local `sqlite:///mlflow.db` store for experiment tracking |
+| `LITESTREAM_BUCKET_URL` | S3-compatible replica URL root (e.g. `s3://my-bucket/stock-app`) — enables continuous SQLite replication in Docker; see [Production Hardening](#production-hardening-sqlite--durability) |
 | `LOG_LEVEL` | Python logging level (default `INFO`) |
 
-If `AV_API_KEY` is not set, the app falls back to Yahoo Finance. All other keys above are purely additive — unset means that feature is either off or uses its free fallback.
+If `AV_API_KEY` is not set, the app falls back to Yahoo Finance. All other keys above are purely additive — unset means that feature is either off or uses its free fallback. `OPENALGO_BASE_URL`/`OPENALGO_API_KEY` are both-or-neither: OpenAlgoSource only activates once both are set, and points at an instance you run yourself — it is not a shared/public data API. If `SMTP_HOST`/`SMTP_USERNAME`/`SMTP_PASSWORD` aren't all set, OTP codes are logged server-side instead of emailed — see [Authentication](#authentication).
 
 ---
 
@@ -217,8 +245,12 @@ Algorithmic-Stock-Price-Prediction/
 │   ├── track_record.py    # Predicted-vs-actual accuracy history
 │   └── monitoring.py      # Model health over time: accuracy, RMSE, drift
 ├── data_access/           # MarketDataSource, MacroFeatureSource, NewsSource
-│                            interfaces + yfinance/Alpha Vantage/FRED/NewsAPI
-├── auth/                  # UserRepository + AuthService (hashing, lockout)
+│                            interfaces + yfinance/Alpha Vantage/OpenAlgo/FRED/NewsAPI
+├── infra/                  # infra.db: shared SQLite hardening (WAL, busy-timeout,
+│                            backup, integrity check) used by every repository below
+├── i18n/                   # Translator + sidebar language switcher; translations/*.json
+├── auth/                  # UserRepository, OtpRepository, EmailSender, AuthService
+│                            (email identity + verification + OTP password reset)
 ├── features/              # FeaturePipeline + technical indicators + sentiment scoring
 ├── models/                # Predictor interface: naive, Ridge, gradient boosting, LSTM, AutoReg
 ├── evaluation/            # Walk-forward backtesting, prediction intervals, drift detection
@@ -226,12 +258,18 @@ Algorithmic-Stock-Price-Prediction/
 │                            + optional MlflowExperimentTracker, composed
 ├── track_record/            # PredictionRecord + its own SQLite-backed repository
 ├── services/                # PredictionService / SentimentService / TrackRecordService
+├── scripts/
+│   └── backup_sqlite.py   # Manual/scheduled hot backup + integrity check of all 3 DBs
 ├── tests/                   # pytest suite
 ├── data/
 │   └── equity_issuers.csv
 ├── requirements.txt
 ├── requirements-ml-extra.txt  # Optional: PyTorch (LSTM) + MLflow
+├── .env.example            # Template for every optional env var this app reads
 ├── dockerfile
+├── entrypoint.sh           # Restores from Litestream (if configured) before starting
+├── litestream.yml          # Continuous SQLite replication config (inactive by default)
+├── .dockerignore
 └── .github/workflows/      # Test suite + Docker build/push pipeline
 ```
 
@@ -247,6 +285,103 @@ To run the container locally:
 docker build -t stock-prediction-app .
 docker run --rm -p 8501:8501 stock-prediction-app
 ```
+
+To run it with continuous SQLite replication (see [Production Hardening](#production-hardening-sqlite--durability) below):
+
+```bash
+docker run --rm -p 8501:8501 \
+  -e LITESTREAM_BUCKET_URL="s3://my-bucket/stock-app" \
+  -e LITESTREAM_ACCESS_KEY_ID="..." \
+  -e LITESTREAM_SECRET_ACCESS_KEY="..." \
+  stock-prediction-app
+```
+
+**This only applies to Docker-based hosts** (Render, Fly.io, Railway, GHCR + your own compute, `docker run` locally). **Streamlit Community Cloud does not use this repository's Dockerfile at all** — it clones the repo and runs `streamlit run app.py` directly with its own managed runtime, so `entrypoint.sh`/Litestream never execute there; its filesystem is ephemeral regardless of anything in this repo. If you need the three SQLite stores to survive a redeploy on Streamlit Community Cloud specifically, either move to a Docker-based host above, or swap the SQLite repositories for a hosted Postgres (Supabase/Neon free tier) behind the same `UserRepository` / `PredictionRecordRepository` / `SqliteExperimentTracker` interfaces — see [Notes](#notes).
+
+---
+
+## Authentication
+
+Identity is an email address, not an arbitrary username — `auth/service.py`'s `AuthService` composes three narrow, independently-testable pieces (constructor-injected, same Dependency Inversion pattern as everywhere else in this app):
+
+- **`UserRepository`** (`auth/repository.py`) — accounts: email, password hash, lockout state, `email_verified` flag.
+- **`OtpRepository`** (`auth/otp_repository.py`) — one active OTP code per `(email, purpose)`, hashed (never stored in plaintext), with an expiry and a bounded attempt counter. Its own table in `users.db`, same file, separate concern.
+- **`EmailSender`** (`auth/email_sender.py`) — `SmtpEmailSender` for real delivery via any SMTP provider (stdlib `smtplib`, no extra dependency), or `NullEmailSender` when SMTP isn't configured, which logs the code server-side instead of emailing it. Local dev and the test suite never need a real mailbox — same degrade-gracefully contract every other optional integration in this app follows.
+
+**The flow:**
+
+1. **Register** (email + password) → account created unverified → a 6-digit code is emailed, valid for `otp_expiry_minutes` (default 10).
+2. **Verify** → entering the correct code marks the account verified. Login is refused with a clear message until this happens ("resend code" is one click away, from the same screen the failed login lands on).
+3. **Login** → email + password, same lockout policy as before (`max_login_attempts`, `lockout_minutes`).
+4. **Forgot password** → request a code → enter the code + a new password. **This replaces an earlier flow that had no identity check at all** — typing any username and a new password reset that account's password outright. The OTP flow closes that gap. `request_password_reset()` also always returns the same response whether or not the email is registered, so the response itself can't be used to enumerate which emails have accounts.
+
+OTP codes are short-lived, single-use (`used_at` is set on success and never reused — replaying a spent code fails the same as a wrong one), and rate-limited per code (`otp_max_attempts`, default 5) — a wrong guess is recorded and a new code must be requested after too many.
+
+**Requesting new codes is rate-limited too** (`otp_resend_cooldown_seconds`, default 60) — verified live that without this, nothing stopped firing dozens of "resend code"/"forgot password" requests for the same account in under a second, each one a real email. The cooldown is per `(email, purpose)`, enforced silently: `request_password_reset()` always returns the same response regardless of whether a new email actually went out, so the throttling itself can't become a second enumeration signal. This limits abuse *targeted at one account* — it does not limit how many *distinct* accounts can be registered in bulk, which needs IP-level/CAPTCHA throttling this app has no request context for (better handled by a reverse proxy or the hosting platform).
+
+**Passwords must be 8–72 bytes** (`min_password_length` / `max_password_length_bytes`) — length only, no forced complexity rules (composition requirements are out of favor per NIST 800-63B). The upper bound isn't arbitrary: this bcrypt build doesn't error past 72 bytes, it silently truncates, so without an explicit cap two different 100-character passwords sharing the same first 72 bytes would be accepted as if they were genuinely different credentials.
+
+**Setting up real email delivery:** set `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD` (see [Environment Variables](#environment-variables)). Any SMTP provider works — a Gmail account with an [App Password](https://myaccount.google.com/apppasswords) is the fastest way to get this running for free in development; for production, a transactional provider (Brevo, Resend, Mailgun, SES, …) will have better deliverability than a personal Gmail account. Without any of these set, codes are written to the server log instead — check the console output to complete registration/reset locally.
+
+**Migration note:** this replaces the previous username-based schema outright — `users.db`'s `users` table now has an `email` primary key, an `email_verified` column, and a `language` column (the account's language at registration, used for OTP emails — see [Multi-Language Support](#multi-language-support)) instead of `username`; `otp_codes` also gained an `issued_at` column (backs the resend cooldown above). There's no migration path from the old schema; a pre-existing local `users.db` needs to be deleted and accounts re-registered (it's gitignored local state, not shipped data). `track_record.db`/`monitoring.db` are unaffected — they still key off `st.session_state.username`, which just holds an email address now.
+
+---
+
+## Production Hardening (SQLite & Durability)
+
+All three SQLite stores (`users.db`, `track_record.db`, `monitoring.db`) go through `infra/db.py`'s `connect()` instead of a bare `sqlite3.connect()`, which applies:
+
+- **WAL journaling** (`PRAGMA journal_mode=WAL`) — readers are never blocked behind a writer.
+- **`synchronous=NORMAL`** — the documented safe pairing with WAL; durable against application crashes, meaningfully cheaper than `FULL` on every write.
+- **`busy_timeout=5000`** — momentary write contention retries internally instead of raising `database is locked` straight to the caller.
+- **`foreign_keys=ON`** for correctness, even though none of the three schemas currently use cross-table foreign keys.
+
+`infra/db.py` also exposes `integrity_check()` (SQLite's own `PRAGMA integrity_check`) and `backup_to()` (SQLite's *online* backup API — safe to call on a live connection, unlike copying the `.db` file on disk).
+
+**Two independent layers of durability, both optional and off by default:**
+
+1. **`scripts/backup_sqlite.py`** — a dependency-free local/scheduled backup: integrity-checks each store, then hot-backs it up to a timestamped file under `--out-dir` (default `backups/`). Run it from cron, a CI job, or by hand:
+   ```bash
+   python scripts/backup_sqlite.py --out-dir backups/
+   ```
+2. **Litestream (`litestream.yml`, `entrypoint.sh`)** — continuous replication of the WAL to S3-compatible object storage (AWS S3, Cloudflare R2, Backblaze B2, MinIO, …), for Docker-based deployments. Inactive unless `LITESTREAM_BUCKET_URL` is set; when it is, `entrypoint.sh` restores each store from its replica on container start (so a fresh container after a redeploy comes back with real data) and then replicates continuously while the app runs. See the `docker run` example above and `litestream.yml`'s comments for the credential env vars your storage provider expects.
+
+**What this does not do:** no PRAGMA or backup tool changes SQLite's single-writer-at-a-time model — for this app's realistic traffic (one write per "Analyze" click, from a handful of users) that's not a real constraint, but it's the honest ceiling if you ever need Postgres-style concurrent writers instead.
+
+---
+
+## Multi-Language Support
+
+Every page has a 🌐 language selector in the sidebar — English, 中文, 한국어, 日本語, Türkçe, and Русский — backed by `i18n/`:
+
+- `i18n/translator.py` — `t(key, **kwargs)` looks up `key` in the active language's JSON catalog (`i18n/translations/{code}.json`), falling back to English and then to the raw key itself, so a missing translation degrades to readable text instead of a crash.
+- `i18n/widget.py` — the sidebar selector, storing the choice in `st.session_state["lang"]` for the *session* (this part still resets on a fresh session/browser — the live UI language isn't restored on your next login).
+- Every page calls `render_language_selector()` *before* the auth gate, so the login/register screen itself is shown in the chosen language, not just the app after logging in.
+- `AuthService` (in `auth/service.py`) returns a `message_key` + params rather than a rendered string — the service computes *what happened*, `auth_ui.py` is the only place that turns it into displayed text via `t()`. This keeps translation out of the business-logic layer, the same split this app draws everywhere else between a service computing meaning and a page rendering it.
+- **Outbound email content is localized too.** `t()` takes an optional `lang=` override (`i18n/translator.py`) precisely so `AuthService` — which never imports Streamlit — can render OTP email subject/body in a specific language rather than "whatever the current session happens to be in." The language a user registered under is stored on their account (`UserRecord.language`) and reused for every later email to that address (a resend, a password-reset code), since there's no browsing session to read a live language choice from at that point. This is one language snapshot per account (taken at registration), not a live preference — it doesn't change if they switch the sidebar selector afterward.
+
+**Known scope limit:** table column headers and chart labels across all pages are translated; a few dynamically-generated strings that pass through third-party formatting (e.g. `sentiment.label.capitalize()`'s "Positive"/"Neutral"/"Negative") are not yet wired through `t()`. The translations themselves (zh/ko/ja/tr/ru) were drafted for this PR and have not had a native-speaker review — treat them as a solid first pass, not a certified translation, especially for the more technical phrasing (RMSE, drift, prediction intervals).
+
+Adding a new language: drop a new `i18n/translations/{code}.json` with the same keys as `en.json`, add `{code}: "Display Name"}` to `LANGUAGES` in `i18n/translator.py`. `tests/test_i18n.py` enforces that every catalog has exactly the same key set as English, so a partial translation fails CI instead of shipping silently broken.
+
+---
+
+## OpenAlgo Integration
+
+[OpenAlgo](https://openalgo.in) is a self-hosted, open-source gateway that normalizes many Indian brokers (Angel One, Zerodha, Upstox, Fyers, and others) behind one REST API. `data_access/openalgo_source.py` (`OpenAlgoSource`) is an additional `MarketDataSource`, composed ahead of Alpha Vantage/yfinance in `build_default_source()` for **NSE/BSE tickers only** (`.NS`/`.BO` suffixes — it never touches `AAPL`-style tickers).
+
+This replaced an earlier direct Angel One SmartAPI integration. The difference matters: SmartAPI required this app to manage broker login itself (client code + PIN + TOTP → JWT, token refresh, resolving each ticker to Angel One's own `symboltoken` before every fetch). OpenAlgo does all of that on its own side, against whichever broker your instance is linked to — this app only ever sends a **single static API key** with a plain `symbol`/`exchange` pair:
+
+- `POST {base_url}/api/v1/history` — `{apikey, symbol, exchange, interval: "D", start_date, end_date}` → daily OHLCV candles.
+- `POST {base_url}/api/v1/quotes` — `{apikey, symbol, exchange}` → real-time quote, including `ltp` (last traded price).
+
+No login step, no token/session state to hold, no separate symbol-resolution call — `OpenAlgoSource` is a single class with no auth counterpart, unlike the SmartAPI integration it replaced.
+
+**This points at an instance you run yourself, not a shared public API.** `OPENALGO_BASE_URL` is the root of your own OpenAlgo deployment — running locally (`http://127.0.0.1:5000` by default), tunneled for development (ngrok or similar), or hosted somewhere stable for production. `OPENALGO_API_KEY` comes from that instance's own settings page. Both unset means `OpenAlgoSource` no-ops for every call without making a network request, exactly like `AlphaVantageSource` when `AV_API_KEY` is unset — see [Environment Variables](#environment-variables). That also means:
+
+- For a single-owner deployment, this becomes a shared, higher-quality Indian-equity data source for everyone using the app — you link your broker to OpenAlgo once, and this app never sees your broker credentials at all, only OpenAlgo's own API key.
+- A tunnel URL (ngrok's free tier, in particular) is ephemeral — it changes every time the tunnel restarts. Treat `OPENALGO_BASE_URL` as a value you'll need to update when that happens; for anything beyond local development, point it at a stable, persistently-running OpenAlgo deployment instead.
+- Only read-only market data is used (history + quotes). OpenAlgo itself exposes a much larger surface — order placement, positions/holdings, options analytics, GTT orders, even Telegram/WhatsApp notifications — none of which this app calls. This is a prediction tool, not a trading tool, and that's a deliberate scope boundary: `OpenAlgoSource` only implements the two `MarketDataSource` methods (`get_history`, `get_quote`) everything else in this app already depends on.
 
 ---
 
@@ -271,7 +406,7 @@ A few design decisions behind the newer features, since they're not obvious from
 
 - The app creates local SQLite files for state: `users.db` (authentication), `track_record.db` (prediction history), and `monitoring.db` (model metrics over time). All three are listed in `.gitignore` and **not** tracked in git — don't commit any of them, and don't remove them from `.gitignore`.
 - `track_record.db` and `monitoring.db` hold every user's data in one file, scoped internally by a `username` column — they're not one-file-per-user. Isolation is enforced in the queries (every read/write requires a username), not by the storage being physically separate.
-- All three files live on local disk with no external backing store. That's fine for local/Docker use, but Streamlit Community Cloud's filesystem is ephemeral — accounts, the track record, and the monitoring history all reset on every app restart/redeploy there. If you want any of them to survive long-term on a free cloud host, swap the SQLite repository for a hosted Postgres (e.g. Supabase/Neon free tier) behind the same `UserRepository` / `PredictionRecordRepository` / `SqliteExperimentTracker` interface — that's exactly the seam those interfaces exist for.
+- All three go through the hardened connection in `infra/db.py` (WAL, busy-timeout — see [Production Hardening](#production-hardening-sqlite--durability)), but hardening the SQLite engine doesn't change where the *file* lives. On local/Docker use with a real mounted volume, or Docker + Litestream, the data persists across restarts. **Streamlit Community Cloud's filesystem is ephemeral and doesn't run this repo's Dockerfile at all** — accounts, the track record, and the monitoring history all reset on every app restart/redeploy there, regardless of the hardening above. If you need persistence specifically on Streamlit Community Cloud, swap the SQLite repositories for a hosted Postgres (e.g. Supabase/Neon free tier) behind the same `UserRepository` / `PredictionRecordRepository` / `SqliteExperimentTracker` interface — that's exactly the seam those interfaces exist for.
 - Every prediction is shown next to a naive "tomorrow = today" baseline. If a model doesn't beat it, the UI says so — that's a valid result, not a bug.
 - Some tickers, especially on Yahoo Finance, may return incomplete history depending on market coverage and request limits.
 - Indian stocks usually need `.NS` or `.BO` suffixes.

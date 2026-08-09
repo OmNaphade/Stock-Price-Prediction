@@ -18,8 +18,8 @@ import yfinance as yf
 from config import log, settings
 
 from .http_session import SESSION
-
-_OHLCV_COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
+from .ohlcv import clean_ohlcv as _clean_ohlcv
+from .openalgo_source import OpenAlgoSource
 
 
 class MarketDataSource(Protocol):
@@ -33,21 +33,6 @@ class MarketDataSource(Protocol):
     def get_quote(self, ticker: str) -> Optional[float]:
         """Latest known price, or None if unavailable from this source."""
         ...
-
-
-def _clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return pd.DataFrame()
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    if "Close" not in df.columns:
-        return pd.DataFrame()
-    cols = [c for c in _OHLCV_COLUMNS if c in df.columns]
-    out = df[cols].copy()
-    out.index = pd.to_datetime(out.index).tz_localize(None)
-    for col in cols:
-        out[col] = pd.to_numeric(out[col], errors="coerce")
-    return out.dropna(subset=["Close"])
 
 
 class YFinanceSource:
@@ -192,8 +177,16 @@ class CompositeMarketDataSource:
 
 
 def build_default_source() -> CompositeMarketDataSource:
-    """Composition root for the default provider chain: Alpha Vantage first
-    (reliable from cloud IPs) when a key is configured, then yfinance."""
+    """Composition root for the default provider chain: OpenAlgo first for
+    NSE/BSE tickers (exchange-native, via your own self-hosted OpenAlgo
+    instance — see config.py's openalgo_* settings), then Alpha Vantage
+    (reliable from cloud IPs) when a key is configured, then yfinance.
+    Each source no-ops for tickers/situations it can't serve, so this
+    ordering only affects which provider answers first, never correctness."""
     return CompositeMarketDataSource(
-        [AlphaVantageSource(settings.av_api_key), YFinanceSource()]
+        [
+            OpenAlgoSource(settings.openalgo_base_url, settings.openalgo_api_key),
+            AlphaVantageSource(settings.av_api_key),
+            YFinanceSource(),
+        ]
     )

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from auth import AuthService, SqliteUserRepository
+from auth import AuthService, SqliteOtpRepository, SqliteUserRepository, build_default_email_sender
 from config import settings
 from data_access import build_default_source
 from data_access.macro import FredMacroSource, NullMacroSource
@@ -23,7 +23,11 @@ from track_record.repository import SqlitePredictionRecordRepository
 
 @st.cache_resource
 def get_auth_service() -> AuthService:
-    return AuthService(SqliteUserRepository(settings.db_path))
+    return AuthService(
+        SqliteUserRepository(settings.db_path),
+        SqliteOtpRepository(settings.db_path),
+        build_default_email_sender(),
+    )
 
 
 @st.cache_resource

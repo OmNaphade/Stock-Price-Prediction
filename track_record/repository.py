@@ -10,9 +10,10 @@ separate rows, never one overwriting the other.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from typing import Optional, Protocol
+
+from infra.db import connect as _connect_hardened
 
 from .models import PredictionRecord
 
@@ -48,7 +49,7 @@ def _row_to_record(row: tuple) -> PredictionRecord:
 
 class SqlitePredictionRecordRepository:
     def __init__(self, db_path: str = "track_record.db"):
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn = _connect_hardened(db_path)
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute(

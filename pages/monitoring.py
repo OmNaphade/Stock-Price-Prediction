@@ -6,11 +6,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from auth_ui import require_authenticated_user
+from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS
 from web_context import get_auth_service, get_monitoring_service
 
 auth_service = get_auth_service()
 monitoring_service = get_monitoring_service()
+
+render_language_selector()
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
 if not require_authenticated_user(auth_service):
@@ -18,53 +21,46 @@ if not require_authenticated_user(auth_service):
 
 
 # ── MAIN APP ──────────────────────────────────────────────────────────────────
-st.sidebar.title(f"Welcome, {st.session_state.username}")
-if st.sidebar.button("Logout"):
+st.sidebar.title(t("common.welcome", username=st.session_state.username))
+if st.sidebar.button(t("common.logout")):
     st.session_state.is_authenticated = False
     st.session_state.username = ""
     st.rerun()
 
-st.markdown("# 🩺 Model Monitoring")
-st.caption(
-    "One entry per ticker/model/day — every backtest run updates that day's row rather "
-    "than piling up duplicates, so this reflects how each model has actually looked over "
-    "time, not how many times someone clicked Analyze. (Scoped to your own analyses — "
-    "not a dashboard shared across everyone using this app.)"
-)
+st.markdown(f"# {t('monitoring.title')}")
+st.caption(t("monitoring.caption"))
 
 known_tickers = monitoring_service.get_known_tickers(st.session_state.username)
 if not known_tickers:
-    st.info(
-        "No backtests logged yet. Analyze a ticker on the **app** or **watchlist** page "
-        "and it'll show up here."
-    )
+    st.info(t("monitoring.no_backtests_info"))
     st.stop()
 
+all_option = t("monitoring.all_option")
 col_ticker, col_model = st.columns(2)
 with col_ticker:
-    ticker_filter = st.selectbox("Ticker", known_tickers)
+    ticker_filter = st.selectbox(t("monitoring.ticker_filter_label"), known_tickers)
 with col_model:
-    model_filter = st.selectbox("Model", ["All"] + list(AVAILABLE_MODELS.keys()))
+    model_filter = st.selectbox(t("monitoring.model_filter_label"), [all_option] + list(AVAILABLE_MODELS.keys()))
 
 summary = monitoring_service.get_summary(
     st.session_state.username,
     ticker=ticker_filter,
-    model_name=None if model_filter == "All" else model_filter,
+    model_name=None if model_filter == all_option else model_filter,
 )
 
 if not summary.records:
-    st.info("No logged runs for this ticker/model combination yet.")
+    st.info(t("monitoring.no_runs_info"))
     st.stop()
 
 m1, m2, m3 = st.columns(3)
-m1.metric("Logged days", summary.logged_days)
+m1.metric(t("monitoring.logged_days_metric"), summary.logged_days)
 m2.metric(
-    "Latest directional accuracy",
+    t("monitoring.latest_accuracy_metric"),
     f"{summary.latest_directional_accuracy:.1%}"
     if summary.latest_directional_accuracy is not None
     else "—",
 )
-m3.metric("Days with drift detected", f"{summary.drift_days} / {summary.logged_days}")
+m3.metric(t("monitoring.drift_days_metric"), f"{summary.drift_days} / {summary.logged_days}")
 
 # Everything below is display shaping only (chart/table layout) — the
 # numbers themselves (logged_days, drift_days, latest accuracy) already
@@ -79,16 +75,13 @@ df = pd.DataFrame(
     }
 )
 
-st.subheader("📈 Directional Accuracy Over Time")
-st.caption(
-    "Per model, against the 50% coin-flip floor (dashed) — not the naive baseline, "
-    "for the same reason the main app doesn't compare them directly there."
-)
+st.subheader(t("monitoring.accuracy_chart_header"))
+st.caption(t("monitoring.accuracy_chart_caption"))
 fig, ax = plt.subplots(figsize=(10, 4))
 for name, group in df.groupby("model_name"):
     ax.plot(group["log_date"], group["model_directional_accuracy"], marker="o", label=name)
-ax.axhline(0.5, color="gray", linestyle="--", linewidth=1, label="Coin flip")
-ax.set_ylabel("Directional accuracy")
+ax.axhline(0.5, color="gray", linestyle="--", linewidth=1, label=t("monitoring.coin_flip_label"))
+ax.set_ylabel(t("monitoring.accuracy_ylabel"))
 ax.set_ylim(0, 1)
 ax.legend(fontsize=9)
 plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
@@ -96,17 +89,20 @@ fig.tight_layout()
 st.pyplot(fig)
 plt.close(fig)
 
-st.subheader("💲 Price RMSE Over Time")
-st.caption("Model vs. the naive baseline, in the same dollar units — lower is better for both.")
+st.subheader(t("monitoring.rmse_chart_header"))
+st.caption(t("monitoring.rmse_chart_caption"))
 fig2, ax2 = plt.subplots(figsize=(10, 4))
 for name, group in df.groupby("model_name"):
-    ax2.plot(group["log_date"], group["model_rmse_price"], marker="o", label=f"{name} (model)")
+    ax2.plot(
+        group["log_date"], group["model_rmse_price"], marker="o",
+        label=t("monitoring.rmse_model_label", model_name=name),
+    )
 baseline_by_date = df.drop_duplicates("log_date")
 ax2.plot(
     baseline_by_date["log_date"], baseline_by_date["baseline_rmse_price"],
-    color="gray", linestyle="--", marker=".", label="Naive baseline",
+    color="gray", linestyle="--", marker=".", label=t("monitoring.rmse_baseline_label"),
 )
-ax2.set_ylabel("RMSE ($)")
+ax2.set_ylabel(t("monitoring.rmse_ylabel"))
 ax2.legend(fontsize=9)
 plt.setp(ax2.get_xticklabels(), rotation=30, ha="right")
 fig2.tight_layout()
@@ -115,29 +111,35 @@ plt.close(fig2)
 
 if summary.drift_days:
     st.warning(
-        f"⚠️ Feature drift was detected on {summary.drift_days} of {summary.logged_days} "
-        f"logged day(s) for {ticker_filter}. Backtest metrics from drifted days may not "
-        "reflect current market behavior as reliably — see the per-day breakdown below."
+        t(
+            "monitoring.drift_warning",
+            drift_days=summary.drift_days,
+            logged_days=summary.logged_days,
+            ticker=ticker_filter,
+        )
     )
 
-st.subheader("📋 Logged Runs")
+st.subheader(t("monitoring.history_header"))
 history_df = pd.DataFrame(
     {
-        "Date": [r.log_date for r in reversed(summary.records)],
-        "Model": [r.model_name for r in reversed(summary.records)],
-        "Directional Accuracy": [r.model_directional_accuracy for r in reversed(summary.records)],
-        "Model RMSE": [r.model_rmse_price for r in reversed(summary.records)],
-        "Baseline RMSE": [r.baseline_rmse_price for r in reversed(summary.records)],
-        "Drift": ["⚠️ Yes" if r.has_drift else "OK" for r in reversed(summary.records)],
-        "Drifted Features": [r.drifted_feature_count for r in reversed(summary.records)],
+        t("monitoring.col_date"): [r.log_date for r in reversed(summary.records)],
+        t("monitoring.col_model"): [r.model_name for r in reversed(summary.records)],
+        t("monitoring.col_directional_accuracy"): [r.model_directional_accuracy for r in reversed(summary.records)],
+        t("monitoring.col_model_rmse"): [r.model_rmse_price for r in reversed(summary.records)],
+        t("monitoring.col_baseline_rmse"): [r.baseline_rmse_price for r in reversed(summary.records)],
+        t("monitoring.col_drift"): [
+            t("monitoring.drift_yes") if r.has_drift else t("monitoring.drift_ok")
+            for r in reversed(summary.records)
+        ],
+        t("monitoring.col_drifted_features"): [r.drifted_feature_count for r in reversed(summary.records)],
     }
 )
 st.dataframe(
     history_df.style.format(
         {
-            "Directional Accuracy": lambda v: f"{v:.1%}" if pd.notna(v) else "—",
-            "Model RMSE": lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
-            "Baseline RMSE": lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
+            t("monitoring.col_directional_accuracy"): lambda v: f"{v:.1%}" if pd.notna(v) else "—",
+            t("monitoring.col_model_rmse"): lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
+            t("monitoring.col_baseline_rmse"): lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
         }
     ),
     use_container_width=True,

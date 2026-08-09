@@ -1,3 +1,4 @@
+from .openalgo_source import OpenAlgoSource
 from .sources import (
     AlphaVantageSource,
     CompositeMarketDataSource,
@@ -10,6 +11,7 @@ __all__ = [
     "MarketDataSource",
     "YFinanceSource",
     "AlphaVantageSource",
+    "OpenAlgoSource",
     "CompositeMarketDataSource",
     "build_default_source",
 ]

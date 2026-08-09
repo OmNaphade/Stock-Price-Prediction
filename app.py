@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from auth_ui import require_authenticated_user
 from config import settings
+from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS, PredictionError
 from web_context import (
     get_auth_service,
@@ -37,15 +38,16 @@ for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+render_language_selector()
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
-if not require_authenticated_user(auth_service, title="📈 Stock Prediction App"):
+if not require_authenticated_user(auth_service, title=t("app.auth_title")):
     st.stop()
 
 
 # ── MAIN APP ──────────────────────────────────────────────────────────────────
-st.sidebar.title(f"👋 Welcome, {st.session_state.username}")
-if st.sidebar.button("Logout"):
+st.sidebar.title(t("common.welcome", username=st.session_state.username))
+if st.sidebar.button(t("common.logout")):
     for k, v in _defaults.items():
         st.session_state[k] = v
     st.rerun()
@@ -61,34 +63,26 @@ if not st.session_state.track_record_resolved_this_session:
     st.session_state.track_record_resolved_this_session = True
 
 if not settings.av_api_key:
-    st.sidebar.warning(
-        "⚠️ No Alpha Vantage key set — using yfinance only.\n\n"
-        "Add `AV_API_KEY` as a Streamlit secret or env var for more reliable "
-        "data when running in the cloud.\n\nGet a free key at alphavantage.co"
-    )
+    st.sidebar.warning(t("app.no_av_key_warning"))
 
-st.title('📊 Stock Price Prediction')
+st.title(t("app.main_title"))
 
 col_inp, col_model, col_btn = st.columns([3, 2, 1])
 with col_inp:
     user_input = st.text_input(
-        'Enter Stock Ticker',
+        t("app.ticker_input_label"),
         value=st.session_state.last_ticker or 'AAPL',
-        placeholder='e.g. AAPL, TSLA, RELIANCE.NS',
+        placeholder=t("app.ticker_placeholder"),
+        max_chars=settings.max_ticker_length,
     ).strip().upper()
 with col_model:
-    model_name = st.selectbox("Model", list(AVAILABLE_MODELS.keys()), index=1)
+    model_name = st.selectbox(t("app.model_label"), list(AVAILABLE_MODELS.keys()), index=1)
 with col_btn:
     st.write("")
-    load_btn = st.button("🔍 Analyze")
+    load_btn = st.button(t("app.analyze_button"))
 
 if not st.session_state.load_attempted and not load_btn:
-    st.info(
-        "👆 Enter a ticker, pick a model, and click **🔍 Analyze**.\n\n"
-        "**Examples:** `AAPL` · `TSLA` · `MSFT` · `RELIANCE.NS` · `TCS.NS`\n\n"
-        "Every model is benchmarked against a naive 'tomorrow = today' "
-        "baseline — if it can't beat that, the app will tell you."
-    )
+    st.info(t("app.initial_help"))
     st.stop()
 
 if load_btn:
@@ -97,7 +91,7 @@ if load_btn:
     st.session_state.last_ticker = user_input
     st.session_state.load_attempted = True
 
-    with st.spinner(f"Fetching data and backtesting {model_name} for {user_input}…"):
+    with st.spinner(t("app.fetching_spinner", model_name=model_name, ticker=user_input)):
         try:
             st.session_state.report = prediction_service.analyze(
                 user_input, start=settings.history_start, model_name=model_name
@@ -114,135 +108,155 @@ if load_btn:
             # fresh Analyze click (e.g. pressing Enter in the ticker box).
             st.session_state.sentiment = sentiment_service.snapshot(user_input)
         except PredictionError as e:
-            st.error(f"❌ {e}")
+            st.error(t("app.prediction_error_prefix", error=e))
         except Exception as e:
-            st.error(f"❌ Unexpected error: {e}")
+            st.error(t("app.unexpected_error_prefix", error=e))
 
 report = st.session_state.report
 if report is None:
     st.stop()
 
 # ── ANALYSIS ──────────────────────────────────────────────────────────────────
-st.subheader('📋 Past Data Summary')
+st.subheader(t("app.past_data_summary"))
 st.markdown(
     report.ohlcv.describe().round(2).to_html(classes="dataframe", border=0),
     unsafe_allow_html=True,
 )
 
-st.subheader('📈 Stock Trends')
+st.subheader(t("app.stock_trends"))
 ma100 = report.ohlcv['Close'].rolling(100).mean()
 ma200 = report.ohlcv['Close'].rolling(200).mean()
 fig, ax = plt.subplots(figsize=(12, 5))
-ax.plot(report.ohlcv.index, report.ohlcv['Close'], label='Close Price', alpha=0.45, linewidth=1)
-ax.plot(report.ohlcv.index, ma100, label='MA 100', linewidth=2)
-ax.plot(report.ohlcv.index, ma200, label='MA 200', linewidth=2)
-ax.set_title(f"{report.ticker} — Close Price & Moving Averages")
-ax.set_xlabel("Date"); ax.set_ylabel("Price"); ax.legend()
+ax.plot(report.ohlcv.index, report.ohlcv['Close'], label=t("app.chart_close_label"), alpha=0.45, linewidth=1)
+ax.plot(report.ohlcv.index, ma100, label=t("app.chart_ma100_label"), linewidth=2)
+ax.plot(report.ohlcv.index, ma200, label=t("app.chart_ma200_label"), linewidth=2)
+ax.set_title(t("app.chart_title", ticker=report.ticker))
+ax.set_xlabel(t("app.chart_xlabel")); ax.set_ylabel(t("app.chart_ylabel")); ax.legend()
 fig.tight_layout(); st.pyplot(fig); plt.close(fig)
 
-st.subheader('🧪 Walk-Forward Backtest — Model vs. Naive Baseline')
+st.subheader(t("app.backtest_header"))
 st.caption(
-    f"{model_name} vs. a 'tomorrow's close = today's close' baseline, averaged "
-    f"across {len(report.model_backtest.folds)} expanding-window, chronological folds."
+    t(
+        "app.backtest_caption",
+        model_name=model_name,
+        n_folds=len(report.model_backtest.folds),
+    )
 )
 b1, b2 = st.columns(2)
 b1.metric(
-    "Directional accuracy",
+    t("app.directional_accuracy_metric"),
     f"{report.model_backtest.mean_directional_accuracy:.1%}",
-    delta=f"{report.model_backtest.mean_directional_accuracy - 0.5:+.1%} vs. coin flip",
+    delta=t(
+        "app.directional_accuracy_delta",
+        value=f"{report.model_backtest.mean_directional_accuracy - 0.5:+.1%}",
+    ),
 )
 b2.metric(
-    "Price RMSE",
+    t("app.price_rmse_metric"),
     f"${report.model_backtest.mean_rmse_price:,.2f}",
-    delta=f"{report.model_backtest.mean_rmse_price - report.baseline_backtest.mean_rmse_price:+,.2f} vs naive baseline",
+    delta=t(
+        "app.price_rmse_delta",
+        value=f"{report.model_backtest.mean_rmse_price - report.baseline_backtest.mean_rmse_price:+,.2f}",
+    ),
     delta_color="inverse",
 )
-st.caption(
-    "Directional accuracy is judged against a 50% coin flip, not the naive baseline — "
-    "the baseline always predicts 'no change,' which has no direction to be right or "
-    "wrong about, so it isn't a meaningful comparison for this particular metric. It's "
-    "still the right comparison for price error (above), where 'no change' is a real "
-    "prediction with a real error to measure."
-)
+st.caption(t("app.directional_accuracy_caption"))
 
 if not report.beats_baseline_on_direction and not report.beats_baseline_on_price_error:
-    st.warning(
-        f"⚠️ **{model_name} beat neither a coin flip on direction nor the naive "
-        "baseline on price error** for this ticker/window. That's a real, useful "
-        "result — it means there's no exploitable signal in these features for this "
-        "stock right now, not that the app is broken. Try a different model or ticker."
-    )
+    st.warning(t("app.beats_neither_warning", model_name=model_name))
 
 if report.model_backtest.last_fold_index is not None:
-    st.subheader('🔬 Most Recent Held-Out Fold: Actual vs Predicted')
+    st.subheader(t("app.held_out_fold_header"))
     fig2, ax2 = plt.subplots(figsize=(12, 5))
     ax2.plot(
         report.model_backtest.last_fold_index, report.model_backtest.last_fold_actual_price,
-        color='steelblue', label='Actual', alpha=0.9, linewidth=1.4,
+        color='steelblue', label=t("app.actual_label"), alpha=0.9, linewidth=1.4,
     )
     ax2.plot(
         report.model_backtest.last_fold_index, report.model_backtest.last_fold_predicted_price,
-        color='tomato', label=f'{model_name} Predicted', alpha=0.9, linewidth=1.4,
+        color='tomato', label=t("app.model_predicted_label", model_name=model_name), alpha=0.9, linewidth=1.4,
     )
     ax2.plot(
         report.baseline_backtest.last_fold_index, report.baseline_backtest.last_fold_predicted_price,
-        color='gray', linestyle='--', label='Naive Predicted', alpha=0.7, linewidth=1.2,
+        color='gray', linestyle='--', label=t("app.naive_predicted_label"), alpha=0.7, linewidth=1.2,
     )
-    ax2.set_xlabel('Date'); ax2.set_ylabel('Price')
-    ax2.set_title(f"{report.ticker} — Held-Out Fold ({report.model_backtest.folds[-1].n_test} trading days)")
+    ax2.set_xlabel(t("app.chart_xlabel")); ax2.set_ylabel(t("app.chart_ylabel"))
+    ax2.set_title(
+        t(
+            "app.held_out_fold_title",
+            ticker=report.ticker,
+            n=report.model_backtest.folds[-1].n_test,
+        )
+    )
     ax2.legend()
     fig2.tight_layout(); st.pyplot(fig2); plt.close(fig2)
 
 target_date_str = report.target_date.strftime("%A, %b %d")
-st.subheader(f'🔮 Predicted Close for {target_date_str}: **${report.predicted_next_close:,.2f}**')
+st.subheader(
+    t("app.predicted_close_header", date=target_date_str, price=f"{report.predicted_next_close:,.2f}")
+)
 if report.interval_low is not None:
     st.caption(
-        f"Model: {model_name} · predicted log-return: {report.predicted_log_return:+.4f} "
-        f"· last close: ${report.last_close:,.2f} · "
-        f"{report.interval_confidence:.0%} interval: ${report.interval_low:,.2f} – ${report.interval_high:,.2f} "
-        "(from real walk-forward backtest error, not a guess)"
+        t(
+            "app.prediction_caption_with_interval",
+            model_name=model_name,
+            log_return=f"{report.predicted_log_return:+.4f}",
+            last_close=f"{report.last_close:,.2f}",
+            confidence=f"{report.interval_confidence:.0%}",
+            low=f"{report.interval_low:,.2f}",
+            high=f"{report.interval_high:,.2f}",
+        )
     )
 else:
     st.caption(
-        f"Model: {model_name} · predicted log-return: {report.predicted_log_return:+.4f} "
-        f"· last close: ${report.last_close:,.2f}"
+        t(
+            "app.prediction_caption_no_interval",
+            model_name=model_name,
+            log_return=f"{report.predicted_log_return:+.4f}",
+            last_close=f"{report.last_close:,.2f}",
+        )
     )
 st.caption(
-    "This prediction has been recorded and will be checked against the real close once "
-    f"{target_date_str} has passed — see the **Track Record** page for how {model_name} "
-    f"has actually done on {report.ticker} (and other tickers) over time."
+    t(
+        "app.track_record_pointer",
+        date=target_date_str,
+        model_name=model_name,
+        ticker=report.ticker,
+    )
 )
 
 if report.live_quote:
     st.metric(
-        "Current Market Price",
+        t("app.current_market_price_metric"),
         f"${report.live_quote:,.2f}",
-        delta=f"Prediction Δ {report.predicted_next_close - report.live_quote:+.2f}",
+        delta=t(
+            "app.prediction_delta_label",
+            delta=f"{report.predicted_next_close - report.live_quote:+.2f}",
+        ),
     )
 
 if report.drift_report is not None and report.drift_report.has_drift:
     st.warning(
-        f"⚠️ **Feature drift detected** in {len(report.drift_report.drifted_features)} of "
-        f"{len(report.drift_report.features)} feature(s) — the last "
-        f"{report.drift_report.current_window} trading days look statistically different from "
-        f"the {report.drift_report.reference_window} days before them "
-        f"({', '.join(report.drift_report.drifted_features)}). Backtest metrics above were "
-        "computed over the full history and may not reflect current conditions as reliably."
+        t(
+            "app.drift_warning",
+            n_drifted=len(report.drift_report.drifted_features),
+            n_total=len(report.drift_report.features),
+            current_window=report.drift_report.current_window,
+            reference_window=report.drift_report.reference_window,
+            feature_list=', '.join(report.drift_report.drifted_features),
+        )
     )
 
-st.subheader('📰 News Sentiment')
-st.caption(
-    "Descriptive context only — recent headlines, not fed into the model. Free news sources "
-    "don't provide a historical archive, so there's no honest way to have backtested this."
-)
+st.subheader(t("app.news_sentiment_header"))
+st.caption(t("app.news_sentiment_caption"))
 sentiment = st.session_state.sentiment
 if sentiment is None or sentiment.label == "unavailable":
-    st.caption("No recent headlines found for this ticker.")
+    st.caption(t("app.no_headlines"))
 else:
     label_emoji = {"positive": "🟢", "neutral": "⚪", "negative": "🔴"}[sentiment.label]
     st.metric(
-        f"{label_emoji} Sentiment ({sentiment.headline_count} recent headlines)",
+        t("app.sentiment_metric_label", emoji=label_emoji, count=sentiment.headline_count),
         sentiment.label.capitalize(),
-        delta=f"compound score {sentiment.mean_compound:+.2f}",
+        delta=t("app.sentiment_delta", score=f"{sentiment.mean_compound:+.2f}"),
         delta_color="off",
     )

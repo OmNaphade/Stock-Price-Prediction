@@ -1,0 +1,24 @@
+# Continuous replication of the app's three SQLite stores to durable
+# object storage, so they survive a container restart/redeploy instead of
+# resetting (the gap called out in the README's Notes section).
+#
+# Inactive by default: entrypoint.sh only starts Litestream when
+# LITESTREAM_BUCKET_URL is set, so nothing changes for local/Docker runs
+# that don't configure it.
+#
+# LITESTREAM_BUCKET_URL is any Litestream-supported replica URL, e.g.:
+#   s3://my-bucket/stock-app                  (AWS S3)
+#   s3://my-bucket/stock-app?endpoint=...      (S3-compatible: R2, B2, MinIO)
+# Credentials are supplied the normal way for that provider (e.g.
+# LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY env vars) — see
+# https://litestream.io/guides/ for the target you're using.
+dbs:
+  - path: /app/users.db
+    replicas:
+      - url: ${LITESTREAM_BUCKET_URL}/users
+  - path: /app/track_record.db
+    replicas:
+      - url: ${LITESTREAM_BUCKET_URL}/track_record
+  - path: /app/monitoring.db
+    replicas:
+      - url: ${LITESTREAM_BUCKET_URL}/monitoring
