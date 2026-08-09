@@ -8,6 +8,7 @@ import pandas as pd
 from auth_ui import require_authenticated_user
 from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS
+from theme_ui import apply_theme
 from web_context import get_auth_service, get_track_record_service
 
 auth_service = get_auth_service()
@@ -17,6 +18,7 @@ if "track_record_resolved_this_session" not in st.session_state:
     st.session_state.track_record_resolved_this_session = False
 
 render_language_selector()
+apply_theme()
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
 if not require_authenticated_user(auth_service):

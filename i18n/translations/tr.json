@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 Hoş geldin, {username}",
   "common.logout": "Çıkış yap",
-
   "auth.default_title": "Hisse Senedi Tahmin Uygulamasına Giriş Yap",
   "auth.email_label": "E-posta",
   "auth.password_label": "Şifre",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "Doğrulama kodunuz {code}. {minutes} dakika içinde sona erecek.",
   "auth.email_reset_subject": "Şifre sıfırlama kodu",
   "auth.email_reset_body": "Şifre sıfırlama kodunuz {code}. {minutes} dakika içinde sona erecek. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.",
-
   "app.auth_title": "📈 Hisse Senedi Tahmin Uygulaması",
   "app.main_title": "📊 Hisse Senedi Fiyat Tahmini",
   "app.no_av_key_warning": "⚠️ Alpha Vantage anahtarı ayarlanmadı — yalnızca yfinance kullanılıyor.\n\nBulutta daha güvenilir veri için Streamlit secret'ı veya ortam değişkeni olarak `AV_API_KEY` ekleyin.\n\nalphavantage.co adresinden ücretsiz anahtar alabilirsiniz.",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "Tahmin Farkı Δ {delta}",
   "app.market_open": "🟢 {exchange} açık — {close_time} IST'de kapanıyor",
   "app.market_closed": "🔴 {exchange} kapalı — {open_time} IST'de açılıyor",
+  "app.next_holiday": "📅 Sonraki {exchange} tatili: {date} — {description}",
   "app.market_depth_header": "📊 Piyasa Derinliği",
   "app.depth_col_bid_qty": "Alış Adedi",
   "app.depth_col_bid_price": "Alış",
@@ -96,7 +95,6 @@
   "app.no_headlines": "Bu hisse senedi için güncel başlık bulunamadı.",
   "app.sentiment_metric_label": "{emoji} Duyarlılık ({count} güncel başlık)",
   "app.sentiment_delta": "bileşik puan {score}",
-
   "watchlist.title": "📈 İzleme Listesi Karşılaştırması",
   "watchlist.caption": "Birden fazla hisse senedi için aynı ileriye dönük test edilmiş tahmini aynı anda çalıştırır; böylece hangilerinin basit referansa karşı gerçekten model avantajı gösterdiğini tek tek kontrol etmek yerine tek bakışta görebilirsiniz.",
   "watchlist.tickers_label": "Hisse kodları (virgülle ayrılmış)",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "Tahmini % Değişim",
   "watchlist.col_directional_accuracy": "Yön Doğruluğu",
   "watchlist.col_beats_baseline": "Referansı Geçti mi",
-
   "track_record.title": "📊 Performans Kaydı",
   "track_record.caption": "Bu uygulamada herhangi bir yerde yaptığınız her tahmin, sonucu bilinmeden önce kaydedilir ve hedef tarihi geçtikten sonra gerçek kapanış fiyatıyla karşılaştırılır. Bu sayfa sizin makbuzunuzdur — bir iddia değil, bir kayıttır. (Yalnızca kendi tahminleriniz — buradaki herkesin performans kaydı kendisine aittir.)",
   "track_record.no_records_info": "Henüz kayıtlı bir tahmin yok. **Uygulama** veya **İzleme Listesi** sayfasında bir hisse senedi analiz edin; hedef tarihi geçtiğinde burada görünecektir.",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ Doğru",
   "track_record.direction_wrong": "❌ Yanlış",
   "track_record.direction_pending": "⏳ Beklemede",
-
   "monitoring.title": "🩺 Model İzleme",
   "monitoring.caption": "Hisse/model/gün kombinasyonu başına bir kayıt bulunur — her geriye dönük test çalıştırıldığında yığılan yinelenen kayıtlar yerine o günün satırı güncellenir; böylece bu sayfa 'Analiz'e kaç kez tıklandığını değil, her modelin zaman içinde gerçekte nasıl performans gösterdiğini yansıtır. (Yalnızca kendi analizlerinizi kapsar — herkesle paylaşılan bir pano değildir.)",
   "monitoring.admin_caption": "Bu uygulamanın tüm kullanıcıları genelinde sistem çapında model durumu — kullanıcı/hisse/model/gün başına bir kayıt. Yalnızca yönetici erişimine açıktır (bkz. README'nin Kimlik Doğrulama bölümü).",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "Kayan Özellikler",
   "monitoring.drift_yes": "⚠️ Var",
   "monitoring.drift_ok": "Normal",
-
   "prediction.title": "📈 Hisse Senedi Fiyat Tahmini",
   "prediction.select_stock_header": "### **Hisse seç**",
   "prediction.choose_stock_label": "Bir hisse senedi seçin",
   "prediction.select_exchange_header": "### **Borsa seç**",
   "prediction.choose_exchange_label": "Bir borsa seçin",
+  "prediction.live_search_header": "### **Canlı sembol arama (OpenAlgo)**",
+  "prediction.live_search_toggle_label": "Canlı NSE/BSE sembollerinde ara",
+  "prediction.live_search_input_label": "Ada veya sembole göre ara",
+  "prediction.live_search_placeholder": "örn. Reliance, TCS, INFY",
+  "prediction.live_search_select_label": "Eşleşen semboller",
+  "prediction.live_search_no_matches": "**{query}** için eşleşme bulunamadı.",
   "prediction.ticker_header": "### **Hisse kodu**",
   "prediction.ticker_code_label": "Hisse senedi kodu",
   "prediction.select_period_header": "### **Dönem seç**",

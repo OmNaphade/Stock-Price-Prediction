@@ -30,6 +30,12 @@ class MarketSession:
     end_time: datetime  # tz-aware, IST
 
 
+@dataclass
+class Holiday:
+    date: str  # ISO date (YYYY-MM-DD)
+    description: str
+
+
 class OpenAlgoMarketCalendar:
     def __init__(self, base_url: str, api_key: str, timeout_seconds: int = 15):
         self._base_url = base_url.rstrip("/")
@@ -37,7 +43,7 @@ class OpenAlgoMarketCalendar:
         self._timeout = timeout_seconds
 
     @property
-    def _is_configured(self) -> bool:
+    def is_configured(self) -> bool:
         return bool(self._base_url and self._api_key)
 
     def get_session(self, exchange: str) -> Optional[MarketSession]:
@@ -47,7 +53,7 @@ class OpenAlgoMarketCalendar:
         here from "couldn't reach the exchange," which is the right call:
         callers shouldn't show a market-status widget at all rather than
         guess which case it was)."""
-        if not self._is_configured:
+        if not self.is_configured:
             return None
         today = datetime.now(IST).strftime("%Y-%m-%d")
         try:
@@ -69,4 +75,39 @@ class OpenAlgoMarketCalendar:
             return MarketSession(exchange=exchange, is_open_now=start <= now <= end, start_time=start, end_time=end)
         except Exception:
             log.warning("OpenAlgo market timings fetch failed for %s", exchange, exc_info=True)
+            return None
+
+    def get_next_holiday(self, exchange: str) -> Optional[Holiday]:
+        """The next upcoming trading holiday for `exchange` this calendar
+        year, or None if unconfigured/unreachable, or there isn't one left
+        this year — deliberately doesn't look ahead into next year (a
+        December-31st edge case), so this is "next holiday we know about,"
+        not an absolute guarantee one doesn't exist a few days out."""
+        if not self.is_configured:
+            return None
+        today = datetime.now(IST).date()
+        try:
+            resp = requests.post(
+                f"{self._base_url}/api/v1/market/holidays",
+                json={"apikey": self._api_key, "year": today.year},
+                timeout=self._timeout,
+            )
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return None
+            entries = payload.get("data") or []
+            upcoming = sorted(
+                (
+                    h for h in entries
+                    if exchange in (h.get("closed_exchanges") or [])
+                    and datetime.strptime(h["date"], "%Y-%m-%d").date() >= today
+                ),
+                key=lambda h: h["date"],
+            )
+            if not upcoming:
+                return None
+            first = upcoming[0]
+            return Holiday(date=first["date"], description=first.get("description", ""))
+        except Exception:
+            log.warning("OpenAlgo market holidays fetch failed for %s", exchange, exc_info=True)
             return None

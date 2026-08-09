@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 欢迎，{username}",
   "common.logout": "登出",
-
   "auth.default_title": "登录股票预测应用",
   "auth.email_label": "邮箱",
   "auth.password_label": "密码",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "您的验证码是 {code}，将在 {minutes} 分钟后过期。",
   "auth.email_reset_subject": "密码重置验证码",
   "auth.email_reset_body": "您的密码重置验证码是 {code}，将在 {minutes} 分钟后过期。如果您没有请求此操作，请忽略此邮件。",
-
   "app.auth_title": "📈 股票预测应用",
   "app.main_title": "📊 股票价格预测",
   "app.no_av_key_warning": "⚠️ 未设置 Alpha Vantage 密钥 — 仅使用 yfinance。\n\n在云端运行时，添加 `AV_API_KEY`（作为 Streamlit secret 或环境变量）可获得更可靠的数据。\n\n在 alphavantage.co 获取免费密钥",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "预测差值 Δ {delta}",
   "app.market_open": "🟢 {exchange} 开市中 — 将于 {close_time}（印度标准时间）收市",
   "app.market_closed": "🔴 {exchange} 已休市 — 将于 {open_time}（印度标准时间）开市",
+  "app.next_holiday": "📅 {exchange} 下一个休市日：{date} — {description}",
   "app.market_depth_header": "📊 市场深度",
   "app.depth_col_bid_qty": "买量",
   "app.depth_col_bid_price": "买价",
@@ -96,7 +95,6 @@
   "app.no_headlines": "未找到该股票代码的近期头条新闻。",
   "app.sentiment_metric_label": "{emoji} 情绪（{count} 条近期头条）",
   "app.sentiment_delta": "综合得分 {score}",
-
   "watchlist.title": "📈 关注列表对比",
   "watchlist.caption": "对多个股票代码同时运行相同的滚动前进回测预测，让您一次性看出哪些股票真正相对朴素基准显示出模型优势，而不必逐个检查。",
   "watchlist.tickers_label": "股票代码（用逗号分隔）",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "预测涨跌幅（%）",
   "watchlist.col_directional_accuracy": "方向准确率",
   "watchlist.col_beats_baseline": "是否超越基准",
-
   "track_record.title": "📊 历史战绩",
   "track_record.caption": "您在应用中任何位置做出的每一次预测，都会在结果揭晓前被记录下来，并在目标日期到达后与实际收盘价进行核对。此页面是您的“凭证” — 不是一句宣称，而是一份记录。（仅显示您自己的预测 — 每个人的历史战绩都是独立的。）",
   "track_record.no_records_info": "尚无已记录的预测。请在**主页**或**关注列表**页面分析一只股票，待其目标日期过后即会显示在此处。",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ 正确",
   "track_record.direction_wrong": "❌ 错误",
   "track_record.direction_pending": "⏳ 待定",
-
   "monitoring.title": "🩺 模型监控",
   "monitoring.caption": "每个“股票代码/模型/日期”组合对应一条记录 — 每次回测运行都会更新当天的记录，而不是不断堆积重复项，因此这里反映的是每个模型随时间推移的实际表现，而非有人点击了多少次“分析”。（仅限您自己的分析 — 并非所有用户共享的仪表盘。）",
   "monitoring.admin_caption": "本应用所有用户的系统级模型健康状况 — 每个用户/股票代码/模型/日期对应一条记录。仅限管理员查看（详见 README 的身份验证部分）。",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "漂移特征数",
   "monitoring.drift_yes": "⚠️ 是",
   "monitoring.drift_ok": "正常",
-
   "prediction.title": "📈 股票价格预测",
   "prediction.select_stock_header": "### **选择股票**",
   "prediction.choose_stock_label": "选择一只股票",
   "prediction.select_exchange_header": "### **选择证券交易所**",
   "prediction.choose_exchange_label": "选择证券交易所",
+  "prediction.live_search_header": "### **实时代码搜索（OpenAlgo）**",
+  "prediction.live_search_toggle_label": "搜索实时 NSE/BSE 代码",
+  "prediction.live_search_input_label": "按名称或代码搜索",
+  "prediction.live_search_placeholder": "例如：Reliance、TCS、INFY",
+  "prediction.live_search_select_label": "匹配的代码",
+  "prediction.live_search_no_matches": "未找到与 **{query}** 匹配的代码。",
   "prediction.ticker_header": "### **股票代码**",
   "prediction.ticker_code_label": "股票代码",
   "prediction.select_period_header": "### **选择时间段**",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from data_access.openalgo_source import OpenAlgoSource, split_indian_ticker
+from data_access.openalgo_source import OpenAlgoSource, SymbolMatch, split_indian_ticker
 
 
 def _response(payload: dict) -> MagicMock:
@@ -179,3 +179,74 @@ class TestOpenAlgoSourceDepth:
         source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
         with patch("data_access.openalgo_source.requests.post", side_effect=Exception("timeout")):
             assert source.get_depth("RELIANCE.NS") is None
+
+
+class TestSymbolMatchTicker:
+    def test_nse_symbol_gets_ns_suffix_and_drops_eq(self):
+        match = SymbolMatch(symbol="RELIANCE-EQ", name="Reliance Industries", exchange="NSE", instrument_type="EQ")
+        assert match.ticker == "RELIANCE.NS"
+
+    def test_bse_symbol_gets_bo_suffix(self):
+        match = SymbolMatch(symbol="TCS-EQ", name="Tata Consultancy Services", exchange="BSE", instrument_type="EQ")
+        assert match.ticker == "TCS.BO"
+
+
+class TestSearchSymbols:
+    def test_unconfigured_returns_empty_without_network_call(self):
+        source = OpenAlgoSource(base_url="", api_key="")
+        with patch("data_access.openalgo_source.requests.post") as mock_post:
+            matches = source.search_symbols("RELIANCE")
+            mock_post.assert_not_called()
+        assert matches == []
+
+    def test_empty_query_returns_empty_without_network_call(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        with patch("data_access.openalgo_source.requests.post") as mock_post:
+            matches = source.search_symbols("")
+            mock_post.assert_not_called()
+        assert matches == []
+
+    def test_returns_matches_filtered_to_equities_only(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        resp = _response(
+            {
+                "status": "success",
+                "data": [
+                    {"symbol": "RELIANCE-EQ", "name": "Reliance Industries", "exchange": "NSE", "instrumenttype": "EQ"},
+                    {"symbol": "RELIANCE-FUT", "name": "Reliance Industries", "exchange": "NSE", "instrumenttype": "FUT"},
+                ],
+            }
+        )
+        with patch("data_access.openalgo_source.requests.post", return_value=resp) as mock_post:
+            matches = source.search_symbols("RELIANCE")
+
+        assert len(matches) == 1
+        assert matches[0].symbol == "RELIANCE-EQ"
+        assert matches[0].ticker == "RELIANCE.NS"
+        called_url, called_kwargs = mock_post.call_args[0][0], mock_post.call_args[1]
+        assert called_url == "https://example.ngrok-free.dev/api/v1/search"
+        assert called_kwargs["json"] == {"apikey": "key123", "query": "RELIANCE", "exchange": "NSE"}
+
+    def test_results_are_capped_at_limit(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        data = [
+            {"symbol": f"SYM{i}-EQ", "name": f"Symbol {i}", "exchange": "NSE", "instrumenttype": "EQ"}
+            for i in range(5)
+        ]
+        resp = _response({"status": "success", "data": data})
+        with patch("data_access.openalgo_source.requests.post", return_value=resp):
+            matches = source.search_symbols("SYM", limit=2)
+        assert len(matches) == 2
+
+    def test_returns_empty_on_error_status(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        with patch(
+            "data_access.openalgo_source.requests.post",
+            return_value=_response({"status": "error", "message": "bad key"}),
+        ):
+            assert source.search_symbols("RELIANCE") == []
+
+    def test_returns_empty_on_network_exception(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        with patch("data_access.openalgo_source.requests.post", side_effect=Exception("timeout")):
+            assert source.search_symbols("RELIANCE") == []

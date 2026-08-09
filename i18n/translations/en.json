@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 Welcome, {username}",
   "common.logout": "Logout",
-
   "auth.default_title": "Login to Stock Prediction App",
   "auth.email_label": "Email",
   "auth.password_label": "Password",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "Your verification code is {code}. It expires in {minutes} minutes.",
   "auth.email_reset_subject": "Password reset code",
   "auth.email_reset_body": "Your password reset code is {code}. It expires in {minutes} minutes. If you didn't request this, you can ignore this email.",
-
   "app.auth_title": "📈 Stock Prediction App",
   "app.main_title": "📊 Stock Price Prediction",
   "app.no_av_key_warning": "⚠️ No Alpha Vantage key set — using yfinance only.\n\nAdd `AV_API_KEY` as a Streamlit secret or env var for more reliable data when running in the cloud.\n\nGet a free key at alphavantage.co",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "Prediction Δ {delta}",
   "app.market_open": "🟢 {exchange} is open — closes at {close_time} IST",
   "app.market_closed": "🔴 {exchange} is closed — opens at {open_time} IST",
+  "app.next_holiday": "📅 Next {exchange} holiday: {date} — {description}",
   "app.market_depth_header": "📊 Market Depth",
   "app.depth_col_bid_qty": "Bid Qty",
   "app.depth_col_bid_price": "Bid",
@@ -96,7 +95,6 @@
   "app.no_headlines": "No recent headlines found for this ticker.",
   "app.sentiment_metric_label": "{emoji} Sentiment ({count} recent headlines)",
   "app.sentiment_delta": "compound score {score}",
-
   "watchlist.title": "📈 Watchlist Comparison",
   "watchlist.caption": "Runs the same walk-forward-backtested prediction across several tickers at once, so you can see which ones actually show a model edge over the naive baseline instead of checking one at a time.",
   "watchlist.tickers_label": "Tickers (comma-separated)",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "Predicted % Change",
   "watchlist.col_directional_accuracy": "Directional Accuracy",
   "watchlist.col_beats_baseline": "Beats Baseline",
-
   "track_record.title": "📊 Track Record",
   "track_record.caption": "Every prediction you make anywhere in this app is recorded before its outcome is known, then checked against the real close once its target date has passed. This page is your receipts — not a claim, a record. (Only your own predictions — everyone's track record here is their own.)",
   "track_record.no_records_info": "No predictions recorded yet. Analyze a ticker on the **app** or **watchlist** page, and it'll show up here once its target date has passed.",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ Correct",
   "track_record.direction_wrong": "❌ Wrong",
   "track_record.direction_pending": "⏳ Pending",
-
   "monitoring.title": "🩺 Model Monitoring",
   "monitoring.caption": "One entry per ticker/model/day — every backtest run updates that day's row rather than piling up duplicates, so this reflects how each model has actually looked over time, not how many times someone clicked Analyze. (Scoped to your own analyses — not a dashboard shared across everyone using this app.)",
   "monitoring.admin_caption": "System-wide model health across every user of this app — one entry per user/ticker/model/day. Admin-only (see the Authentication section of the README).",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "Drifted Features",
   "monitoring.drift_yes": "⚠️ Yes",
   "monitoring.drift_ok": "OK",
-
   "prediction.title": "📈 Stock Price Prediction",
   "prediction.select_stock_header": "### **Select stock**",
   "prediction.choose_stock_label": "Choose a stock",
   "prediction.select_exchange_header": "### **Select stock exchange**",
   "prediction.choose_exchange_label": "Choose a stock exchange",
+  "prediction.live_search_header": "### **Live symbol search (OpenAlgo)**",
+  "prediction.live_search_toggle_label": "Search live NSE/BSE symbols",
+  "prediction.live_search_input_label": "Search by name or symbol",
+  "prediction.live_search_placeholder": "e.g. Reliance, TCS, INFY",
+  "prediction.live_search_select_label": "Matching symbols",
+  "prediction.live_search_no_matches": "No matches found for **{query}**.",
   "prediction.ticker_header": "### **Stock ticker**",
   "prediction.ticker_code_label": "Stock ticker code",
   "prediction.select_period_header": "### **Select period**",

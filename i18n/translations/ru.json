@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 Добро пожаловать, {username}",
   "common.logout": "Выйти",
-
   "auth.default_title": "Вход в приложение прогнозирования акций",
   "auth.email_label": "Электронная почта",
   "auth.password_label": "Пароль",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "Ваш код подтверждения: {code}. Он истекает через {minutes} минут.",
   "auth.email_reset_subject": "Код сброса пароля",
   "auth.email_reset_body": "Ваш код сброса пароля: {code}. Он истекает через {minutes} минут. Если вы не запрашивали это, просто проигнорируйте это письмо.",
-
   "app.auth_title": "📈 Приложение прогнозирования акций",
   "app.main_title": "📊 Прогноз цены акций",
   "app.no_av_key_warning": "⚠️ Ключ Alpha Vantage не задан — используется только yfinance.\n\nЧтобы получить более надёжные данные при работе в облаке, добавьте `AV_API_KEY` в качестве секрета Streamlit или переменной окружения.\n\nБесплатный ключ можно получить на alphavantage.co",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "Разница прогноза Δ {delta}",
   "app.market_open": "🟢 {exchange} открыта — закроется в {close_time} по IST",
   "app.market_closed": "🔴 {exchange} закрыта — откроется в {open_time} по IST",
+  "app.next_holiday": "📅 Следующий выходной {exchange}: {date} — {description}",
   "app.market_depth_header": "📊 Биржевой стакан",
   "app.depth_col_bid_qty": "Объём покупки",
   "app.depth_col_bid_price": "Покупка",
@@ -96,7 +95,6 @@
   "app.no_headlines": "Свежих заголовков по этому тикеру не найдено.",
   "app.sentiment_metric_label": "{emoji} Настроение ({count} последних заголовков)",
   "app.sentiment_delta": "суммарный балл {score}",
-
   "watchlist.title": "📈 Сравнение списка наблюдения",
   "watchlist.caption": "Запускает один и тот же прогноз с пошаговым бэктестированием сразу по нескольким тикерам, чтобы вы могли увидеть, какие из них действительно показывают преимущество модели над базовым прогнозом, не проверяя каждый по отдельности.",
   "watchlist.tickers_label": "Тикеры (через запятую)",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "Прогнозируемое изменение (%)",
   "watchlist.col_directional_accuracy": "Точность направления",
   "watchlist.col_beats_baseline": "Превосходит базовый прогноз",
-
   "track_record.title": "📊 История прогнозов",
   "track_record.caption": "Каждый прогноз, сделанный в любом месте этого приложения, записывается до того, как станет известен результат, а после наступления целевой даты сверяется с реальной ценой закрытия. Эта страница — ваши «чеки», не заявление, а запись. (Только ваши собственные прогнозы — история прогнозов у каждого пользователя своя.)",
   "track_record.no_records_info": "Пока нет записанных прогнозов. Проанализируйте тикер на странице **приложения** или **списка наблюдения** — он появится здесь после наступления целевой даты.",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ Верно",
   "track_record.direction_wrong": "❌ Неверно",
   "track_record.direction_pending": "⏳ Ожидание",
-
   "monitoring.title": "🩺 Мониторинг модели",
   "monitoring.caption": "Одна запись на каждую комбинацию тикер/модель/день — каждый запуск бэктестирования обновляет запись за этот день, а не накапливает дубликаты, поэтому здесь отражается, как модель вела себя с течением времени, а не сколько раз кто-то нажал «Анализировать». (Только ваш собственный анализ — это не общая панель для всех пользователей приложения.)",
   "monitoring.admin_caption": "Общее состояние моделей по всем пользователям этого приложения — одна запись на пользователя/тикер/модель/день. Доступно только администратору (см. раздел «Аутентификация» в README).",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "Дрейфующих признаков",
   "monitoring.drift_yes": "⚠️ Да",
   "monitoring.drift_ok": "Норма",
-
   "prediction.title": "📈 Прогноз цены акций",
   "prediction.select_stock_header": "### **Выберите акцию**",
   "prediction.choose_stock_label": "Выберите акцию",
   "prediction.select_exchange_header": "### **Выберите биржу**",
   "prediction.choose_exchange_label": "Выберите биржу",
+  "prediction.live_search_header": "### **Поиск тикеров в реальном времени (OpenAlgo)**",
+  "prediction.live_search_toggle_label": "Поиск тикеров NSE/BSE в реальном времени",
+  "prediction.live_search_input_label": "Поиск по названию или тикеру",
+  "prediction.live_search_placeholder": "например, Reliance, TCS, INFY",
+  "prediction.live_search_select_label": "Найденные тикеры",
+  "prediction.live_search_no_matches": "Совпадений для **{query}** не найдено.",
   "prediction.ticker_header": "### **Тикер акции**",
   "prediction.ticker_code_label": "Код тикера акции",
   "prediction.select_period_header": "### **Выберите период**",

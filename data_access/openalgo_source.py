@@ -43,6 +43,23 @@ class MarketDepth:
     total_sell_qty: int
 
 
+@dataclass
+class SymbolMatch:
+    symbol: str  # OpenAlgo/tradingsymbol, e.g. "RELIANCE-EQ"
+    name: str  # underlying name, e.g. "Reliance Industries"
+    exchange: str
+    instrument_type: str  # "EQ", "FUT", "CE", "PE", ...
+
+    @property
+    def ticker(self) -> str:
+        """This app's own ticker format ('RELIANCE.NS'), derived from the
+        OpenAlgo tradingsymbol — strips broker-style suffixes like "-EQ"
+        that this app's other tickers (yfinance-style) don't use."""
+        suffix = "NS" if self.exchange == "NSE" else "BO"
+        base = self.symbol.split("-")[0]
+        return f"{base}.{suffix}"
+
+
 def split_indian_ticker(ticker: str) -> Optional[tuple[str, str]]:
     """'RELIANCE.NS' -> ('RELIANCE', 'NSE'); None for anything OpenAlgo's
     NSE/BSE-style coverage doesn't serve (US tickers, a bare symbol with
@@ -63,11 +80,11 @@ class OpenAlgoSource:
         self._timeout = timeout_seconds
 
     @property
-    def _is_configured(self) -> bool:
+    def is_configured(self) -> bool:
         return bool(self._base_url and self._api_key)
 
     def get_history(self, ticker: str, start: str, end: str) -> pd.DataFrame:
-        if not self._is_configured:
+        if not self.is_configured:
             return pd.DataFrame()
         parsed = split_indian_ticker(ticker)
         if parsed is None:
@@ -106,7 +123,7 @@ class OpenAlgoSource:
             return pd.DataFrame()
 
     def get_quote(self, ticker: str) -> Optional[float]:
-        if not self._is_configured:
+        if not self.is_configured:
             return None
         parsed = split_indian_ticker(ticker)
         if parsed is None:
@@ -134,7 +151,7 @@ class OpenAlgoSource:
         the news-sentiment panel: shown alongside a prediction, never fed
         into it. Not part of the MarketDataSource contract (history/quote
         only) since no other provider here shares this capability."""
-        if not self._is_configured:
+        if not self.is_configured:
             return None
         parsed = split_indian_ticker(ticker)
         if parsed is None:
@@ -164,3 +181,37 @@ class OpenAlgoSource:
         except Exception:
             log.warning("OpenAlgo depth fetch failed for %s", ticker, exc_info=True)
             return None
+
+    def search_symbols(self, query: str, exchange: str = "NSE", limit: int = 20) -> list[SymbolMatch]:
+        """Live symbol lookup — lets the UI offer a much broader, always-
+        current stock picker than the static `data/equity_issuers.csv`
+        list, for NSE/BSE. Equity results only (`instrumenttype == "EQ"`):
+        `/search` also returns futures/options contracts for the same
+        underlying, which aren't tickers this app's prediction pipeline
+        can do anything with."""
+        if not self.is_configured or not query:
+            return []
+        try:
+            resp = requests.post(
+                f"{self._base_url}/api/v1/search",
+                json={"apikey": self._api_key, "query": query, "exchange": exchange},
+                timeout=self._timeout,
+            )
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return []
+            results = payload.get("data") or []
+            matches = [
+                SymbolMatch(
+                    symbol=r["symbol"],
+                    name=r.get("name", r["symbol"]),
+                    exchange=r.get("exchange", exchange),
+                    instrument_type=r.get("instrumenttype", ""),
+                )
+                for r in results
+                if r.get("instrumenttype") == "EQ"
+            ]
+            return matches[:limit]
+        except Exception:
+            log.warning("OpenAlgo symbol search failed for %r", query, exc_info=True)
+            return []

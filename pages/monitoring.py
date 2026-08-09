@@ -8,12 +8,14 @@ import pandas as pd
 from auth_ui import require_admin_user
 from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS
+from theme_ui import apply_theme
 from web_context import get_auth_service, get_monitoring_service
 
 auth_service = get_auth_service()
 monitoring_service = get_monitoring_service()
 
 render_language_selector()
+apply_theme()
 
 # ── AUTH PAGE (admin only — see auth_ui.require_admin_user) ───────────────────
 if not require_admin_user(auth_service):

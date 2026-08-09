@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 환영합니다, {username}님",
   "common.logout": "로그아웃",
-
   "auth.default_title": "주식 예측 앱 로그인",
   "auth.email_label": "이메일",
   "auth.password_label": "비밀번호",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "인증 코드는 {code} 입니다. {minutes}분 후에 만료됩니다.",
   "auth.email_reset_subject": "비밀번호 재설정 코드",
   "auth.email_reset_body": "비밀번호 재설정 코드는 {code} 입니다. {minutes}분 후에 만료됩니다. 이 요청을 하지 않으셨다면 이 이메일을 무시하셔도 됩니다.",
-
   "app.auth_title": "📈 주식 예측 앱",
   "app.main_title": "📊 주가 예측",
   "app.no_av_key_warning": "⚠️ Alpha Vantage 키가 설정되지 않아 yfinance만 사용 중입니다.\n\n클라우드에서 더 안정적인 데이터를 얻으려면 Streamlit secret 또는 환경 변수로 `AV_API_KEY`를 추가하세요.\n\nalphavantage.co에서 무료 키를 발급받을 수 있습니다.",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "예측 차이 Δ {delta}",
   "app.market_open": "🟢 {exchange} 개장 중 — {close_time}(IST)에 마감",
   "app.market_closed": "🔴 {exchange} 휴장 중 — {open_time}(IST)에 개장",
+  "app.next_holiday": "📅 다음 {exchange} 휴장일: {date} — {description}",
   "app.market_depth_header": "📊 시장 호가창",
   "app.depth_col_bid_qty": "매수 수량",
   "app.depth_col_bid_price": "매수가",
@@ -96,7 +95,6 @@
   "app.no_headlines": "이 티커에 대한 최근 헤드라인을 찾을 수 없습니다.",
   "app.sentiment_metric_label": "{emoji} 감성 (최근 헤드라인 {count}건)",
   "app.sentiment_delta": "종합 점수 {score}",
-
   "watchlist.title": "📈 관심 종목 비교",
   "watchlist.caption": "여러 티커에 대해 동일한 워크포워드 백테스트 예측을 한 번에 실행하여, 하나씩 확인하지 않고도 어떤 종목이 단순 기준선 대비 실제 모델 우위를 보이는지 한눈에 알 수 있습니다.",
   "watchlist.tickers_label": "티커 (쉼표로 구분)",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "예측 변동률 (%)",
   "watchlist.col_directional_accuracy": "방향 정확도",
   "watchlist.col_beats_baseline": "기준선 초과 여부",
-
   "track_record.title": "📊 성과 기록",
   "track_record.caption": "이 앱 어디에서든 만든 모든 예측은 결과가 나오기 전에 기록되며, 목표 날짜가 지나면 실제 종가와 대조됩니다. 이 페이지는 주장이 아니라 하나의 기록, 즉 영수증과 같습니다. (자신의 예측만 표시됩니다 — 각 사용자의 성과 기록은 서로 독립적입니다.)",
   "track_record.no_records_info": "아직 기록된 예측이 없습니다. **앱** 또는 **관심 종목** 페이지에서 티커를 분석하면 목표 날짜가 지난 후 이곳에 표시됩니다.",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ 적중",
   "track_record.direction_wrong": "❌ 오류",
   "track_record.direction_pending": "⏳ 대기 중",
-
   "monitoring.title": "🩺 모델 모니터링",
   "monitoring.caption": "티커/모델/일자 조합당 하나의 항목이 표시됩니다 — 백테스트를 실행할 때마다 중복이 쌓이는 대신 해당 날짜의 항목이 갱신되므로, '분석' 버튼을 몇 번 클릭했는지가 아니라 각 모델이 시간에 따라 실제로 어떤 성과를 보였는지를 보여줍니다. (본인의 분석 결과만 표시됩니다 — 모든 사용자가 공유하는 대시보드가 아닙니다.)",
   "monitoring.admin_caption": "이 앱을 사용하는 모든 사용자에 대한 시스템 전체 모델 상태 — 사용자/티커/모델/일자별로 하나의 항목이 표시됩니다. 관리자 전용입니다 (README의 인증 섹션 참고).",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "드리프트 특성 수",
   "monitoring.drift_yes": "⚠️ 있음",
   "monitoring.drift_ok": "정상",
-
   "prediction.title": "📈 주가 예측",
   "prediction.select_stock_header": "### **종목 선택**",
   "prediction.choose_stock_label": "종목을 선택하세요",
   "prediction.select_exchange_header": "### **증권거래소 선택**",
   "prediction.choose_exchange_label": "증권거래소를 선택하세요",
+  "prediction.live_search_header": "### **실시간 종목 검색(OpenAlgo)**",
+  "prediction.live_search_toggle_label": "실시간 NSE/BSE 종목 검색",
+  "prediction.live_search_input_label": "이름 또는 종목 코드로 검색",
+  "prediction.live_search_placeholder": "예: Reliance, TCS, INFY",
+  "prediction.live_search_select_label": "일치하는 종목",
+  "prediction.live_search_no_matches": "**{query}**와(과) 일치하는 종목이 없습니다.",
   "prediction.ticker_header": "### **주식 티커**",
   "prediction.ticker_code_label": "주식 티커 코드",
   "prediction.select_period_header": "### **기간 선택**",

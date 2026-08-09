@@ -13,6 +13,7 @@ from config import settings
 from data_access import split_indian_ticker
 from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS, PredictionError
+from theme_ui import apply_theme
 from web_context import (
     get_auth_service,
     get_market_calendar,
@@ -43,6 +44,7 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 render_language_selector()
+apply_theme()
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
 if not require_authenticated_user(auth_service, title=t("app.auth_title")):
@@ -253,6 +255,9 @@ if parsed_ticker is not None:
             st.caption(t("app.market_open", exchange=exchange, close_time=session.end_time.strftime("%H:%M")))
         else:
             st.caption(t("app.market_closed", exchange=exchange, open_time=session.start_time.strftime("%H:%M")))
+            holiday = get_market_calendar().get_next_holiday(exchange)
+            if holiday is not None:
+                st.caption(t("app.next_holiday", exchange=exchange, date=holiday.date, description=holiday.description))
 
     depth = get_openalgo_source().get_depth(report.ticker)
     if depth is not None and (depth.bids or depth.asks):

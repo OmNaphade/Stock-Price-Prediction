@@ -31,7 +31,7 @@ This app helps you explore stock history and generate next-price forecasts from 
 - **Multi-user by design** — the track record and monitoring history are both scoped per account: what you've analyzed and how it's turned out is yours, not merged with anyone else logged into the same app
 - **Watchlist page** comparing predictions across several tickers at once
 - **Alternative exploration page** under `pages/prediction.py` with candlestick charts and AutoReg forecasting
-- **Live market context** via `yfinance`, with optional Alpha Vantage support when an API key is available, and optional OpenAlgo support for exchange-native NSE/BSE data via your own self-hosted OpenAlgo instance — including live market depth (top bid/ask levels) and a market-open/closed status indicator when configured
+- **Live market context** via `yfinance`, with optional Alpha Vantage support when an API key is available, and optional OpenAlgo support for exchange-native NSE/BSE data via your own self-hosted OpenAlgo instance — including live market depth (top bid/ask levels), a market-open/closed status indicator with the next trading holiday, and live NSE/BSE symbol search, when configured
 - **Multi-language UI** — switch between English, 中文, 한국어, 日本語, Türkçe, and Русский from the sidebar on any page
 - **Production-hardened SQLite** — WAL mode, busy-timeout, and integrity checks by default, with optional continuous Litestream replication so data survives a redeploy
 - **Docker-ready deployment** for consistent local and cloud execution
@@ -154,10 +154,12 @@ The main app in [app.py](app.py) predicts the next close via `services.Predictio
 | Cloud-friendly fetches | curl_cffi session fallback for yfinance reliability |
 | OpenAlgo data source (optional) | Your own self-hosted OpenAlgo instance as an exchange-native source for NSE/BSE (`.NS`/`.BO`) tickers, ahead of Alpha Vantage/yfinance in the provider chain when configured |
 | Market depth (optional) | Top bid/ask levels for Indian tickers, shown alongside the live quote — descriptive context only, same as news sentiment, never fed into a model. Requires OpenAlgo |
-| Market status (optional) | "NSE is open, closes at 15:30 IST" / "closed, opens at 09:15 IST" — real session timings, not a guessed schedule. Requires OpenAlgo |
+| Market status (optional) | "NSE is open, closes at 15:30 IST" / "closed, opens at 09:15 IST" — real session timings, not a guessed schedule. When closed, also shows the next upcoming trading holiday for that exchange. Requires OpenAlgo |
+| Live symbol search (optional) | Sidebar search box on the exploration page (`pages/prediction.py`) that queries OpenAlgo's live NSE/BSE symbol list by name or code — purely additive alongside the static CSV picker, which stays as the default/fallback. Requires OpenAlgo |
 | Admin-gated Monitoring (optional) | The Monitoring page only opens for the account matching `ADMIN_EMAIL`, auto-provisioned from `.env` on first run (see [Authentication](#authentication)) |
 | Multi-language UI | Sidebar language switcher — English, 中文, 한국어, 日本語, Türkçe, Русский — persisted for the session |
 | Hardened SQLite | WAL journaling, busy-timeout, `synchronous=NORMAL`, and integrity checks on every store by default (see [Production Hardening](#production-hardening-sqlite--durability)) |
+| Theme-aware styling | Shared CSS layer (`theme_ui.py`) applied on every page — polished buttons, metric cards, headings, alerts, and tables, built entirely on Streamlit's own theme CSS variables so it automatically matches light/dark/custom themes, no hardcoded colors |
 
 ---
 
@@ -253,6 +255,7 @@ Algorithmic-Stock-Price-Prediction/
 ├── app.py                 # Thin Streamlit view: auth + prediction dashboard
 ├── web_context.py         # Cached service singletons shared across all pages
 ├── config.py              # Single source of settings (env vars / st.secrets)
+├── theme_ui.py             # Shared CSS layer, applied once per page (theme-variable based)
 ├── pages/
 │   ├── prediction.py      # Exploration page: candlesticks + AutoReg forecast
 │   ├── watchlist.py       # Compare predictions across several tickers
@@ -405,10 +408,12 @@ This replaced an earlier direct Angel One SmartAPI integration. The difference m
 
 No login step, no token/session state to hold, no separate symbol-resolution call — `OpenAlgoSource` is a single class with no auth counterpart, unlike the SmartAPI integration it replaced.
 
-**Two more OpenAlgo capabilities, each its own class (Interface Segregation — see [Design Principles](#design-principles)):**
+**More OpenAlgo capabilities, each its own class/method (Interface Segregation — see [Design Principles](#design-principles)):**
 
 - **Market depth** (`OpenAlgoSource.get_depth`) — `POST /api/v1/depth` → top bid/ask levels for a ticker. Shown on the main app page alongside the live quote, purely descriptive (same "shown, never fed into a model" rule the news-sentiment panel follows).
 - **Market status** (`data_access/openalgo_calendar.py`'s `OpenAlgoMarketCalendar.get_session`) — `POST /api/v1/market/timings` → whether NSE/BSE is in session right now, and when it opens/closes today. Kept in its own file/class, not on `OpenAlgoSource`: "give me data for this ticker" and "is the exchange open at all" are different questions, one ticker-scoped and one not, the same reasoning that kept `SmartAPISession`/`SmartAPISource` apart before OpenAlgo replaced that integration.
+- **Next trading holiday** (`OpenAlgoMarketCalendar.get_next_holiday`) — `POST /api/v1/market/holidays` → the nearest upcoming holiday for an exchange this calendar year. Shown as extra context alongside the "market closed" status, not as its own widget — it only looks ahead within the current year, so it's "next holiday we know about," not an absolute guarantee.
+- **Live symbol search** (`OpenAlgoSource.search_symbols`) — `POST /api/v1/search` → live NSE/BSE symbol/name lookup, filtered to equities only (futures/options contracts for the same underlying are excluded). Powers an optional search box on `pages/prediction.py`, purely additive alongside the existing static `data/equity_issuers.csv` picker, which remains the default.
 
 **This points at an instance you run yourself, not a shared public API.** `OPENALGO_BASE_URL` is the root of your own OpenAlgo deployment — running locally (`http://127.0.0.1:5000` by default), tunneled for development (ngrok or similar), or hosted somewhere stable for production. `OPENALGO_API_KEY` comes from that instance's own settings page. Both unset means every method on `OpenAlgoSource`/`OpenAlgoMarketCalendar` no-ops without making a network request, exactly like `AlphaVantageSource` when `AV_API_KEY` is unset — see [Environment Variables](#environment-variables). That also means:
 
@@ -433,6 +438,7 @@ A few design decisions behind the newer features, since they're not obvious from
 - **Model monitoring is always on and separate from MLflow on purpose.** `SqliteExperimentTracker` needs no extra dependency and upserts one row per `(username, ticker, model, day)` — clicking Analyze five times on the same ticker/model/day updates that day's row rather than piling up five identical entries (the models are all seeded, so a same-day rerun on the same data gives the same backtest result anyway). MLflow, when installed, is composed alongside it via `CompositeExperimentTracker` and keeps its own append-only history — that's MLflow's own data model, not something this app overrides, so the two intentionally behave differently: the in-app Monitoring page shows current state per day, MLflow shows every run ever.
 - **Track record and monitoring are scoped per user *in storage*, auth is the only shared table.** Both `prediction_records` and `model_metrics` carry `username` as part of their primary key — two users predicting the same ticker with the same model on the same day get two separate rows, not one overwriting the other. That's independent of who's allowed to *read* the data: the Track Record page still only ever queries its own viewer's rows, while the admin-only Monitoring page (see [Authentication](#authentication)) deliberately drops the username filter to show every row — same storage, two different read policies layered on top, not two different schemas. `resolve_pending()` is the one deliberate exception on the write side: it isn't scoped to a single user, since checking a prediction against the real market close is the same fact-check for everyone, and it caches that lookup across users predicting the same ticker/date in one pass rather than re-fetching per user. This also drove a cleanup: `PredictionService` used to log to monitoring internally as a side effect of `analyze()`, which meant it had to know who was asking once monitoring became per-user. Logging is now an explicit call the page makes with the report afterward (`ModelMonitoringService.log_from_report`), symmetric with how `TrackRecordService.record_prediction` already worked — `PredictionService` stays a pure ticker-in, report-out function with no notion of users at all.
 - **Every write path in this app is idempotent by design, and it's enforced at the repository, not just by caller discipline.** `save()` for both predictions and auth users upserts on their natural key; `resolve()` only updates a prediction `WHERE actual_close IS NULL`, so a second call — from any caller, not just the one that's careful — can't silently overwrite a real recorded outcome; `record_successful_login`/`reset_login_attempts` set fixed end states. The one deliberate exception is `record_failed_login`, which increments a counter — that's supposed to accumulate, since each failed attempt is a genuinely new event.
+- **Styling is one shared CSS layer, not per-page inline styles.** `theme_ui.py`'s `apply_theme()` follows the exact same pattern as `i18n.render_language_selector()` — a single function every page calls once, near the top. The CSS itself only ever references Streamlit's own theme CSS variables (`--primary-color`, `--background-color`, `--secondary-background-color`, `--text-color`) rather than hardcoded hex colors, so it automatically matches whichever theme (light, dark, or a custom `.streamlit/config.toml`) the viewer has selected, with no separate dark-mode branch to maintain here.
 
 ---
 

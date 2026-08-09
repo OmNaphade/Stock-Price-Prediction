@@ -9,12 +9,14 @@ from data_access.reference import load_equity_list, periods_and_intervals
 from data_access.sources import YFinanceSource
 from i18n import render_language_selector, t
 from models import AutoRegForecaster
-from web_context import get_auth_service
+from theme_ui import apply_theme
+from web_context import get_auth_service, get_openalgo_source
 
 auth_service = get_auth_service()
 yfinance_source = YFinanceSource()
 
 render_language_selector()
+apply_theme()
 
 # ── AUTH PAGE ─────────────────────────────────────────────────────────────────
 if not require_authenticated_user(auth_service):
@@ -41,6 +43,26 @@ stock_exchange = st.sidebar.radio(t("prediction.choose_exchange_label"), ("BSE",
 ticker_symbol = stock_dict[stock]
 suffix = "BO" if stock_exchange == "BSE" else "NS"
 stock_ticker = f"{ticker_symbol}.{suffix}"
+
+# Live OpenAlgo symbol search — purely additive on top of the static CSV
+# picker above: unconfigured or untouched, it changes nothing, so this
+# never regresses the default flow. A picked match overrides stock_ticker.
+openalgo_source = get_openalgo_source()
+if openalgo_source.is_configured:
+    st.sidebar.markdown(t("prediction.live_search_header"))
+    if st.sidebar.checkbox(t("prediction.live_search_toggle_label")):
+        query = st.sidebar.text_input(
+            t("prediction.live_search_input_label"),
+            placeholder=t("prediction.live_search_placeholder"),
+        ).strip()
+        if query:
+            matches = openalgo_source.search_symbols(query)
+            if matches:
+                labels = [f"{m.name} ({m.symbol}) — {m.exchange}" for m in matches]
+                choice = st.sidebar.selectbox(t("prediction.live_search_select_label"), labels)
+                stock_ticker = matches[labels.index(choice)].ticker
+            else:
+                st.sidebar.caption(t("prediction.live_search_no_matches", query=query))
 
 st.sidebar.markdown(t("prediction.ticker_header"))
 st.sidebar.text_input(label=t("prediction.ticker_code_label"), value=stock_ticker, disabled=True)

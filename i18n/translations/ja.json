@@ -1,7 +1,6 @@
 {
   "common.welcome": "👋 ようこそ、{username} さん",
   "common.logout": "ログアウト",
-
   "auth.default_title": "株価予測アプリにログイン",
   "auth.email_label": "メールアドレス",
   "auth.password_label": "パスワード",
@@ -44,7 +43,6 @@
   "auth.email_verify_body": "確認コードは {code} です。{minutes} 分後に有効期限が切れます。",
   "auth.email_reset_subject": "パスワードリセットコード",
   "auth.email_reset_body": "パスワードリセットコードは {code} です。{minutes} 分後に有効期限が切れます。心当たりがない場合は、このメールを無視してください。",
-
   "app.auth_title": "📈 株価予測アプリ",
   "app.main_title": "📊 株価予測",
   "app.no_av_key_warning": "⚠️ Alpha Vantage のキーが設定されていないため、yfinance のみを使用しています。\n\nクラウド環境でより信頼性の高いデータを取得するには、Streamlit の secret または環境変数として `AV_API_KEY` を追加してください。\n\nalphavantage.co で無料キーを取得できます。",
@@ -85,6 +83,7 @@
   "app.prediction_delta_label": "予測差分 Δ {delta}",
   "app.market_open": "🟢 {exchange} は取引時間中 — {close_time}（インド標準時）に終了",
   "app.market_closed": "🔴 {exchange} は休場中 — {open_time}（インド標準時）に開始",
+  "app.next_holiday": "📅 次の{exchange}休場日：{date} — {description}",
   "app.market_depth_header": "📊 気配値情報",
   "app.depth_col_bid_qty": "買数量",
   "app.depth_col_bid_price": "買値",
@@ -96,7 +95,6 @@
   "app.no_headlines": "このティッカーに関する最近の見出しは見つかりませんでした。",
   "app.sentiment_metric_label": "{emoji} センチメント（直近の見出し {count} 件）",
   "app.sentiment_delta": "総合スコア {score}",
-
   "watchlist.title": "📈 ウォッチリスト比較",
   "watchlist.caption": "複数のティッカーに対して同じウォークフォワード・バックテスト予測を一度に実行し、1つずつ確認しなくても、どの銘柄が単純基準に対して実際にモデルの優位性を示しているかを一目で確認できます。",
   "watchlist.tickers_label": "ティッカー（カンマ区切り）",
@@ -116,7 +114,6 @@
   "watchlist.col_predicted_pct_change": "予測変化率（%）",
   "watchlist.col_directional_accuracy": "方向的中率",
   "watchlist.col_beats_baseline": "基準を上回ったか",
-
   "track_record.title": "📊 トラックレコード",
   "track_record.caption": "このアプリ内のどこで行った予測も、結果が判明する前に記録され、目標日を過ぎると実際の終値と照合されます。このページはあなたの「証拠」であり、単なる主張ではなく記録です。（表示されるのはご自身の予測のみです — 各ユーザーのトラックレコードはそれぞれ独立しています。）",
   "track_record.no_records_info": "まだ記録された予測はありません。**アプリ**または**ウォッチリスト**ページでティッカーを分析すると、目標日を過ぎた時点でここに表示されます。",
@@ -148,7 +145,6 @@
   "track_record.direction_correct": "✅ 的中",
   "track_record.direction_wrong": "❌ 不一致",
   "track_record.direction_pending": "⏳ 保留中",
-
   "monitoring.title": "🩺 モデルモニタリング",
   "monitoring.caption": "ティッカー・モデル・日付の組み合わせごとに1件のエントリがあります — バックテストを実行するたびに重複が積み上がるのではなく、その日のレコードが更新されるため、「分析」が何回クリックされたかではなく、各モデルが時間とともに実際にどう推移したかを反映します。（表示されるのはご自身の分析のみです — 全ユーザーで共有されるダッシュボードではありません。）",
   "monitoring.admin_caption": "このアプリの全ユーザーにわたるシステム全体のモデル状況 — ユーザー・ティッカー・モデル・日付ごとに1件のエントリがあります。管理者専用です（README の認証セクションを参照）。",
@@ -181,12 +177,17 @@
   "monitoring.col_drifted_features": "ドリフトした特徴量数",
   "monitoring.drift_yes": "⚠️ あり",
   "monitoring.drift_ok": "正常",
-
   "prediction.title": "📈 株価予測",
   "prediction.select_stock_header": "### **銘柄を選択**",
   "prediction.choose_stock_label": "銘柄を選んでください",
   "prediction.select_exchange_header": "### **証券取引所を選択**",
   "prediction.choose_exchange_label": "証券取引所を選んでください",
+  "prediction.live_search_header": "### **リアルタイム銘柄検索（OpenAlgo）**",
+  "prediction.live_search_toggle_label": "リアルタイムNSE/BSE銘柄を検索",
+  "prediction.live_search_input_label": "名前または銘柄コードで検索",
+  "prediction.live_search_placeholder": "例：Reliance、TCS、INFY",
+  "prediction.live_search_select_label": "一致する銘柄",
+  "prediction.live_search_no_matches": "**{query}** に一致する銘柄が見つかりませんでした。",
   "prediction.ticker_header": "### **銘柄ティッカー**",
   "prediction.ticker_code_label": "銘柄ティッカーコード",
   "prediction.select_period_header": "### **期間を選択**",
