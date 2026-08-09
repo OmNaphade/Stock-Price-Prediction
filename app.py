@@ -6,14 +6,18 @@ st.set_page_config(
 )
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from auth_ui import require_authenticated_user
 from config import settings
+from data_access import split_indian_ticker
 from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS, PredictionError
 from web_context import (
     get_auth_service,
+    get_market_calendar,
     get_monitoring_service,
+    get_openalgo_source,
     get_prediction_service,
     get_sentiment_service,
     get_track_record_service,
@@ -234,6 +238,35 @@ if report.live_quote:
             delta=f"{report.predicted_next_close - report.live_quote:+.2f}",
         ),
     )
+
+# OpenAlgo-only context (see README's OpenAlgo Integration section): both
+# no-op to None for non-Indian tickers or when OpenAlgo isn't configured,
+# so this section renders nothing at all in that case, same
+# degrade-gracefully contract as everything else fed by optional sources.
+parsed_ticker = split_indian_ticker(report.ticker)
+if parsed_ticker is not None:
+    _, exchange = parsed_ticker
+
+    session = get_market_calendar().get_session(exchange)
+    if session is not None:
+        if session.is_open_now:
+            st.caption(t("app.market_open", exchange=exchange, close_time=session.end_time.strftime("%H:%M")))
+        else:
+            st.caption(t("app.market_closed", exchange=exchange, open_time=session.start_time.strftime("%H:%M")))
+
+    depth = get_openalgo_source().get_depth(report.ticker)
+    if depth is not None and (depth.bids or depth.asks):
+        st.caption(t("app.market_depth_header"))
+        depth_rows = [
+            {
+                t("app.depth_col_bid_qty"): depth.bids[i].quantity if i < len(depth.bids) else None,
+                t("app.depth_col_bid_price"): depth.bids[i].price if i < len(depth.bids) else None,
+                t("app.depth_col_ask_price"): depth.asks[i].price if i < len(depth.asks) else None,
+                t("app.depth_col_ask_qty"): depth.asks[i].quantity if i < len(depth.asks) else None,
+            }
+            for i in range(max(len(depth.bids), len(depth.asks)))
+        ]
+        st.dataframe(pd.DataFrame(depth_rows), use_container_width=True, hide_index=True)
 
 if report.drift_report is not None and report.drift_report.has_drift:
     st.warning(

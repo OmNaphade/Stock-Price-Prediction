@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from data_access.openalgo_source import OpenAlgoSource, _split_ticker
+from data_access.openalgo_source import OpenAlgoSource, split_indian_ticker
 
 
 def _response(payload: dict) -> MagicMock:
@@ -13,25 +13,25 @@ def _response(payload: dict) -> MagicMock:
 
 class TestSplitTicker:
     def test_ns_suffix_maps_to_nse(self):
-        assert _split_ticker("RELIANCE.NS") == ("RELIANCE", "NSE")
+        assert split_indian_ticker("RELIANCE.NS") == ("RELIANCE", "NSE")
 
     def test_bo_suffix_maps_to_bse(self):
-        assert _split_ticker("TCS.BO") == ("TCS", "BSE")
+        assert split_indian_ticker("TCS.BO") == ("TCS", "BSE")
 
     def test_us_ticker_returns_none(self):
-        assert _split_ticker("AAPL") is None
+        assert split_indian_ticker("AAPL") is None
 
     def test_unknown_suffix_returns_none(self):
-        assert _split_ticker("FOO.LSE") is None
+        assert split_indian_ticker("FOO.LSE") is None
 
     def test_none_ticker_returns_none_instead_of_raising(self):
         """Regression test: reproduced live as an unhandled TypeError
         ("argument of type 'NoneType' is not iterable") — a None ticker
         must degrade gracefully like every other bad input, not crash."""
-        assert _split_ticker(None) is None
+        assert split_indian_ticker(None) is None
 
     def test_empty_string_ticker_returns_none(self):
-        assert _split_ticker("") is None
+        assert split_indian_ticker("") is None
 
 
 class TestOpenAlgoSource:
@@ -118,3 +118,64 @@ class TestOpenAlgoSource:
     def test_get_quote_returns_none_when_unconfigured(self):
         source = OpenAlgoSource(base_url="", api_key="")
         assert source.get_quote("RELIANCE.NS") is None
+
+
+class TestOpenAlgoSourceDepth:
+    def test_returns_none_when_unconfigured_without_network_call(self):
+        source = OpenAlgoSource(base_url="", api_key="")
+        with patch("data_access.openalgo_source.requests.post") as mock_post:
+            depth = source.get_depth("RELIANCE.NS")
+            mock_post.assert_not_called()
+        assert depth is None
+
+    def test_returns_none_for_non_indian_ticker(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        assert source.get_depth("AAPL") is None
+
+    def test_returns_none_for_none_ticker(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        assert source.get_depth(None) is None
+
+    def test_returns_depth_snapshot_on_success(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        depth_resp = _response(
+            {
+                "status": "success",
+                "data": {
+                    "totalbuyqty": 591351,
+                    "totalsellqty": 835701,
+                    "asks": [{"price": 769.6, "quantity": 767}, {"price": 769.65, "quantity": 115}],
+                    "bids": [{"price": 769.4, "quantity": 886}, {"price": 769.35, "quantity": 212}],
+                },
+            }
+        )
+        with patch("data_access.openalgo_source.requests.post", return_value=depth_resp) as mock_post:
+            depth = source.get_depth("RELIANCE.NS")
+
+        assert depth is not None
+        assert len(depth.bids) == 2 and len(depth.asks) == 2
+        assert depth.bids[0].price == 769.4
+        assert depth.bids[0].quantity == 886
+        assert depth.asks[0].price == 769.6
+        assert depth.total_buy_qty == 591351
+        assert depth.total_sell_qty == 835701
+        assert mock_post.call_args[0][0] == "https://example.ngrok-free.dev/api/v1/depth"
+
+    def test_returns_none_on_error_status(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        with patch(
+            "data_access.openalgo_source.requests.post",
+            return_value=_response({"status": "error", "message": "bad key"}),
+        ):
+            assert source.get_depth("RELIANCE.NS") is None
+
+    def test_returns_none_when_both_sides_empty(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        resp = _response({"status": "success", "data": {"bids": [], "asks": [], "totalbuyqty": 0, "totalsellqty": 0}})
+        with patch("data_access.openalgo_source.requests.post", return_value=resp):
+            assert source.get_depth("RELIANCE.NS") is None
+
+    def test_returns_none_on_network_exception(self):
+        source = OpenAlgoSource(base_url="https://example.ngrok-free.dev", api_key="key123")
+        with patch("data_access.openalgo_source.requests.post", side_effect=Exception("timeout")):
+            assert source.get_depth("RELIANCE.NS") is None

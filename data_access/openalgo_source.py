@@ -16,6 +16,7 @@ is unset.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
@@ -28,7 +29,21 @@ from .ohlcv import clean_ohlcv
 _EXCHANGE_BY_SUFFIX = {"NS": "NSE", "BO": "BSE"}
 
 
-def _split_ticker(ticker: str) -> Optional[tuple[str, str]]:
+@dataclass
+class DepthLevel:
+    price: float
+    quantity: int
+
+
+@dataclass
+class MarketDepth:
+    bids: list[DepthLevel]  # best bid first
+    asks: list[DepthLevel]  # best ask first
+    total_buy_qty: int
+    total_sell_qty: int
+
+
+def split_indian_ticker(ticker: str) -> Optional[tuple[str, str]]:
     """'RELIANCE.NS' -> ('RELIANCE', 'NSE'); None for anything OpenAlgo's
     NSE/BSE-style coverage doesn't serve (US tickers, a bare symbol with
     no exchange to infer, or a non-string/falsy value — reproduced live:
@@ -54,7 +69,7 @@ class OpenAlgoSource:
     def get_history(self, ticker: str, start: str, end: str) -> pd.DataFrame:
         if not self._is_configured:
             return pd.DataFrame()
-        parsed = _split_ticker(ticker)
+        parsed = split_indian_ticker(ticker)
         if parsed is None:
             return pd.DataFrame()
         symbol, exchange = parsed
@@ -93,7 +108,7 @@ class OpenAlgoSource:
     def get_quote(self, ticker: str) -> Optional[float]:
         if not self._is_configured:
             return None
-        parsed = _split_ticker(ticker)
+        parsed = split_indian_ticker(ticker)
         if parsed is None:
             return None
         symbol, exchange = parsed
@@ -111,4 +126,41 @@ class OpenAlgoSource:
             return float(price) if price is not None else None
         except Exception:
             log.warning("OpenAlgo quote fetch failed for %s", ticker, exc_info=True)
+            return None
+
+    def get_depth(self, ticker: str) -> Optional[MarketDepth]:
+        """Order-book snapshot (top bid/ask levels) for an NSE/BSE ticker
+        — descriptive market context for the live-quote panel, same as
+        the news-sentiment panel: shown alongside a prediction, never fed
+        into it. Not part of the MarketDataSource contract (history/quote
+        only) since no other provider here shares this capability."""
+        if not self._is_configured:
+            return None
+        parsed = split_indian_ticker(ticker)
+        if parsed is None:
+            return None
+        symbol, exchange = parsed
+
+        try:
+            resp = requests.post(
+                f"{self._base_url}/api/v1/depth",
+                json={"apikey": self._api_key, "symbol": symbol, "exchange": exchange},
+                timeout=self._timeout,
+            )
+            payload = resp.json()
+            if payload.get("status") != "success":
+                return None
+            data = payload.get("data") or {}
+            bids = [DepthLevel(l["price"], l["quantity"]) for l in data.get("bids") or []]
+            asks = [DepthLevel(l["price"], l["quantity"]) for l in data.get("asks") or []]
+            if not bids and not asks:
+                return None
+            return MarketDepth(
+                bids=bids,
+                asks=asks,
+                total_buy_qty=data.get("totalbuyqty", 0),
+                total_sell_qty=data.get("totalsellqty", 0),
+            )
+        except Exception:
+            log.warning("OpenAlgo depth fetch failed for %s", ticker, exc_info=True)
             return None

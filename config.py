@@ -62,6 +62,17 @@ class Settings:
     max_login_attempts: int = 5
     lockout_minutes: int = 15
 
+    # Admin account, auto-provisioned on first run if both are set (see
+    # auth/bootstrap.py) — gates access to the Monitoring page (see
+    # auth_ui.require_admin_user). Both optional; Monitoring is simply
+    # unavailable to everyone until they're configured. Bootstrap only
+    # ever *creates* the account if it doesn't exist yet — it never
+    # overwrites, so changing the password later via the normal
+    # forgot-password flow survives a redeploy instead of being silently
+    # reset back to whatever these env vars still say.
+    admin_email: str = field(default_factory=lambda: _get_secret("ADMIN_EMAIL"))
+    admin_password: str = field(default_factory=lambda: _get_secret("ADMIN_PASSWORD"))
+
     # Email delivery for OTP codes (registration verification + password
     # reset). Unset by default: EmailSender falls back to logging the code
     # server-side instead of emailing it, so local dev/tests never need a

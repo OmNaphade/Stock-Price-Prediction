@@ -7,9 +7,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-from auth import AuthService, SqliteOtpRepository, SqliteUserRepository, build_default_email_sender
+from auth import (
+    AuthService,
+    SqliteOtpRepository,
+    SqliteUserRepository,
+    build_default_email_sender,
+    ensure_admin_account,
+)
 from config import settings
-from data_access import build_default_source
+from data_access import OpenAlgoMarketCalendar, OpenAlgoSource, build_default_source
 from data_access.macro import FredMacroSource, NullMacroSource
 from data_access.news import build_default_news_source
 from data_access.sources import MarketDataSource
@@ -23,8 +29,10 @@ from track_record.repository import SqlitePredictionRecordRepository
 
 @st.cache_resource
 def get_auth_service() -> AuthService:
+    user_repository = SqliteUserRepository(settings.db_path)
+    ensure_admin_account(user_repository)  # no-op unless ADMIN_EMAIL/ADMIN_PASSWORD are set
     return AuthService(
-        SqliteUserRepository(settings.db_path),
+        user_repository,
         SqliteOtpRepository(settings.db_path),
         build_default_email_sender(),
     )
@@ -36,6 +44,20 @@ def get_market_data_source() -> MarketDataSource:
     # same provider chain and HTTP session, rather than each building its
     # own independent one.
     return build_default_source()
+
+
+@st.cache_resource
+def get_openalgo_source() -> OpenAlgoSource:
+    # Separate from get_market_data_source(): that one returns the
+    # composite MarketDataSource (history/quote only, provider-agnostic).
+    # Depth is an OpenAlgo-specific capability no other provider shares,
+    # so callers that want it need the concrete class, not the Protocol.
+    return OpenAlgoSource(settings.openalgo_base_url, settings.openalgo_api_key)
+
+
+@st.cache_resource
+def get_market_calendar() -> OpenAlgoMarketCalendar:
+    return OpenAlgoMarketCalendar(settings.openalgo_base_url, settings.openalgo_api_key)
 
 
 @st.cache_resource

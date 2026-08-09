@@ -50,6 +50,26 @@ def require_authenticated_user(auth_service: AuthService, title: str | None = No
     return False
 
 
+def require_admin_user(auth_service: AuthService, title: str | None = None) -> bool:
+    """Same gate as require_authenticated_user, plus a second, independent
+    check: the logged-in account must be the configured admin
+    (settings.admin_email — see auth/bootstrap.py). Used by
+    pages/monitoring.py. Kept as two separate checks rather than one
+    combined one — "are you logged in" vs. "are you allowed to see this"
+    — so a page that only needs the first doesn't have to reason about
+    the second, same Interface Segregation reasoning the rest of this app
+    already follows for its other Protocols."""
+    if not require_authenticated_user(auth_service, title):
+        return False
+    if not settings.admin_email:
+        st.error(t("auth.admin_not_configured"))
+        return False
+    if st.session_state.username != settings.admin_email.strip().lower():
+        st.error(t("auth.admin_only"))
+        return False
+    return True
+
+
 def _goto(flow: str, email: str = "") -> None:
     st.session_state.auth_flow = flow
     st.session_state.auth_pending_email = email

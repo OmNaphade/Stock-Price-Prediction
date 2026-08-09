@@ -85,6 +85,24 @@ class ModelMonitoringService:
         limit: int = 500,
     ) -> ModelMonitoringSummary:
         records = self._reader.get_recent(username, ticker=ticker, model_name=model_name, limit=limit)
+        return self._summarize(records)
+
+    def get_known_tickers_all_users(self) -> list[str]:
+        """System-wide ticker list, for the admin-only Monitoring page
+        (auth_ui.require_admin_user) — every ticker any user has ever
+        analyzed, not just the caller's own."""
+        return self._reader.get_tickers_all_users()
+
+    def get_summary_all_users(
+        self,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 500,
+    ) -> ModelMonitoringSummary:
+        records = self._reader.get_recent_all_users(ticker=ticker, model_name=model_name, limit=limit)
+        return self._summarize(records)
+
+    def _summarize(self, records: list[ModelMetricRecord]) -> ModelMonitoringSummary:
         chronological = sorted(records, key=lambda r: r.log_date)
         drift_days = sum(1 for r in records if r.has_drift)
         latest_accuracy = (

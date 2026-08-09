@@ -48,14 +48,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-import bcrypt
-
 from config import settings
 from i18n import t
 
 from .email_sender import EmailSender
 from .otp import generate_code, hash_code, verify_code
 from .otp_repository import OtpRepository
+from .password_hashing import check_password, hash_password
 from .repository import UserRepository, minutes_from_now_iso, utcnow_iso
 
 _VERIFY_EMAIL = "verify_email"
@@ -97,14 +96,6 @@ def _validate_password(password: str) -> Optional[tuple[str, dict]]:
     return None
 
 
-def _hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def _check_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
-
-
 class AuthService:
     def __init__(
         self,
@@ -123,7 +114,7 @@ class AuthService:
         password_error = _validate_password(password)
         if password_error:
             return AuthResult(False, *password_error)
-        created = self._repo.create_user(email, _hash_password(password), language)
+        created = self._repo.create_user(email, hash_password(password), language)
         if not created:
             return AuthResult(False, "auth.email_exists")
         self._send_otp(
@@ -181,7 +172,7 @@ class AuthService:
             self._repo.reset_login_attempts(email)
             effective_failed_attempts = 0
 
-        if _check_password(password, user.password_hash):
+        if check_password(password, user.password_hash):
             self._repo.record_successful_login(email)
             return AuthResult(True, "auth.logged_in")
 
@@ -227,7 +218,7 @@ class AuthService:
         check = self._check_otp(email, _RESET_PASSWORD, code)
         if not check.success:
             return check
-        updated = self._repo.update_password(email, _hash_password(new_password))
+        updated = self._repo.update_password(email, hash_password(new_password))
         if not updated:
             return AuthResult(False, "auth.email_not_found")
         return AuthResult(True, "auth.password_reset_successful")

@@ -5,7 +5,7 @@ st.set_page_config(page_title="Model Monitoring", page_icon="📈")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from auth_ui import require_authenticated_user
+from auth_ui import require_admin_user
 from i18n import render_language_selector, t
 from services import AVAILABLE_MODELS
 from web_context import get_auth_service, get_monitoring_service
@@ -15,8 +15,8 @@ monitoring_service = get_monitoring_service()
 
 render_language_selector()
 
-# ── AUTH PAGE ─────────────────────────────────────────────────────────────────
-if not require_authenticated_user(auth_service):
+# ── AUTH PAGE (admin only — see auth_ui.require_admin_user) ───────────────────
+if not require_admin_user(auth_service):
     st.stop()
 
 
@@ -28,9 +28,9 @@ if st.sidebar.button(t("common.logout")):
     st.rerun()
 
 st.markdown(f"# {t('monitoring.title')}")
-st.caption(t("monitoring.caption"))
+st.caption(t("monitoring.admin_caption"))
 
-known_tickers = monitoring_service.get_known_tickers(st.session_state.username)
+known_tickers = monitoring_service.get_known_tickers_all_users()
 if not known_tickers:
     st.info(t("monitoring.no_backtests_info"))
     st.stop()
@@ -42,8 +42,7 @@ with col_ticker:
 with col_model:
     model_filter = st.selectbox(t("monitoring.model_filter_label"), [all_option] + list(AVAILABLE_MODELS.keys()))
 
-summary = monitoring_service.get_summary(
-    st.session_state.username,
+summary = monitoring_service.get_summary_all_users(
     ticker=ticker_filter,
     model_name=None if model_filter == all_option else model_filter,
 )
@@ -123,6 +122,7 @@ st.subheader(t("monitoring.history_header"))
 history_df = pd.DataFrame(
     {
         t("monitoring.col_date"): [r.log_date for r in reversed(summary.records)],
+        t("monitoring.col_user"): [r.username for r in reversed(summary.records)],
         t("monitoring.col_model"): [r.model_name for r in reversed(summary.records)],
         t("monitoring.col_directional_accuracy"): [r.model_directional_accuracy for r in reversed(summary.records)],
         t("monitoring.col_model_rmse"): [r.model_rmse_price for r in reversed(summary.records)],

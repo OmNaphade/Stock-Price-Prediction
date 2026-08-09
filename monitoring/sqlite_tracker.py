@@ -39,7 +39,13 @@ class ModelMetricsReader(Protocol):
     """The read side, deliberately separate from ExperimentTracker's write
     side (`log_backtest`) — PredictionService only ever writes; only the
     monitoring page reads, and it shouldn't have to depend on a Protocol
-    shaped for the writer's job (Interface Segregation)."""
+    shaped for the writer's job (Interface Segregation).
+
+    The `_all_users` variants exist for the admin-only Monitoring page
+    (see auth_ui.require_admin_user) — same queries with the `username`
+    filter dropped, not a different table or schema. `ModelMetricRecord`
+    already carries `username` per row, so the caller can always tell
+    whose data it's looking at even in the unfiltered view."""
 
     def get_recent(
         self,
@@ -50,6 +56,15 @@ class ModelMetricsReader(Protocol):
     ) -> list[ModelMetricRecord]: ...
 
     def get_tickers(self, username: str) -> list[str]: ...
+
+    def get_recent_all_users(
+        self,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 500,
+    ) -> list[ModelMetricRecord]: ...
+
+    def get_tickers_all_users(self) -> list[str]: ...
 
 
 def _row_to_record(row: tuple) -> ModelMetricRecord:
@@ -150,4 +165,31 @@ class SqliteExperimentTracker:
                 "SELECT DISTINCT ticker FROM model_metrics WHERE username = ? ORDER BY ticker",
                 (username,),
             ).fetchall()
+        return [row[0] for row in rows]
+
+    def get_recent_all_users(
+        self,
+        ticker: Optional[str] = None,
+        model_name: Optional[str] = None,
+        limit: int = 500,
+    ) -> list[ModelMetricRecord]:
+        clauses, params_list = [], []
+        if ticker:
+            clauses.append("ticker = ?")
+            params_list.append(ticker)
+        if model_name:
+            clauses.append("model_name = ?")
+            params_list.append(model_name)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM model_metrics "
+                f"{where} ORDER BY log_date DESC LIMIT ?",
+                (*params_list, limit),
+            ).fetchall()
+        return [_row_to_record(row) for row in rows]
+
+    def get_tickers_all_users(self) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute("SELECT DISTINCT ticker FROM model_metrics ORDER BY ticker").fetchall()
         return [row[0] for row in rows]
